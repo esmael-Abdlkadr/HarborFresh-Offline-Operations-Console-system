@@ -44,11 +44,12 @@ export default function CourseDetailPage() {
   const myEnrollment = enrollments.find((item) => item.memberId === currentUser?.id)
 
   async function drop() {
-    if (!currentUser || !myEnrollment?.id) return
+    if (!currentUser || !myEnrollment?.id || !course) return
     setError(null)
     try {
       await courseService.drop(myEnrollment.id, currentUser, 'Member requested drop', {
         expectedEnrollmentVersion: myEnrollment.version,
+        expectedCourseVersion: course.version,
       })
     } catch (dropError) {
       if (dropError instanceof EnrollmentError) {
@@ -74,10 +75,15 @@ export default function CourseDetailPage() {
   }
 
   async function markStatus(enrollmentId: number, status: 'Completed' | 'NoShow') {
-    if (!currentUser) return
+    if (!currentUser || !course) return
     setError(null)
     try {
-      await courseService.markEnrollmentStatus(enrollmentId, status, currentUser, 'Managed in detail page')
+      const enrollment = enrollments.find((e) => e.id === enrollmentId)
+      if (!enrollment) return
+      await courseService.markEnrollmentStatus(enrollmentId, status, currentUser, 'Managed in detail page', {
+        expectedEnrollmentVersion: enrollment.version,
+        expectedCourseVersion: course.version,
+      })
     } catch (markError) {
       setError(markError instanceof Error ? markError.message : 'Failed to update enrollment')
     }

@@ -79,13 +79,14 @@ describe('Fix 1: course enrollment integrity', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    const first = await courseService.enroll(course.id!, member.id!, 'op-1')
+    const first = await courseService.enroll(course.id!, member.id!, 'op-1', { expectedCourseVersion: 2 })
     expect(first.status).toBe('Enrolled')
 
     // Second enrollment with different operationId should return the existing enrollment
-    const second = await courseService.enroll(course.id!, member.id!, 'op-2')
+    const c1 = await db.courses.get(course.id!)
+    const second = await courseService.enroll(course.id!, member.id!, 'op-2', { expectedCourseVersion: c1!.version })
     expect(second.id).toBe(first.id)
 
     // Verify only one enrollment exists
@@ -113,10 +114,11 @@ describe('Fix 1: course enrollment integrity', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    const first = await courseService.enroll(course.id!, member.id!, 'same-op')
-    const second = await courseService.enroll(course.id!, member.id!, 'same-op')
+    const first = await courseService.enroll(course.id!, member.id!, 'same-op', { expectedCourseVersion: 2 })
+    const c1 = await db.courses.get(course.id!)
+    const second = await courseService.enroll(course.id!, member.id!, 'same-op', { expectedCourseVersion: c1!.version })
     expect(second.id).toBe(first.id)
   })
 
@@ -136,11 +138,15 @@ describe('Fix 1: course enrollment integrity', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    await courseService.enroll(course.id!, member.id!, 'op-a')
-    await courseService.enroll(course.id!, member.id!, 'op-b')
-    await courseService.enroll(course.id!, member.id!, 'op-c')
+    // capacity=1, so first enroll fills it (course version goes 2→3)
+    await courseService.enroll(course.id!, member.id!, 'op-a', { expectedCourseVersion: 2 })
+    // Duplicate enrollments for same member return existing — read current version each time
+    let cv = (await db.courses.get(course.id!))!.version
+    await courseService.enroll(course.id!, member.id!, 'op-b', { expectedCourseVersion: cv })
+    cv = (await db.courses.get(course.id!))!.version
+    await courseService.enroll(course.id!, member.id!, 'op-c', { expectedCourseVersion: cv })
 
     const enrolled = await db.enrollments
       .where('courseId')
@@ -151,7 +157,8 @@ describe('Fix 1: course enrollment integrity', () => {
 
     // A different member should still be able to get waitlisted
     const member2 = await ensureMember('member2-cap')
-    const e2 = await courseService.enroll(course.id!, member2.id!, 'op-d')
+    cv = (await db.courses.get(course.id!))!.version
+    const e2 = await courseService.enroll(course.id!, member2.id!, 'op-d', { expectedCourseVersion: cv })
     expect(e2.status).toBe('Waitlisted')
   })
 })
@@ -218,8 +225,8 @@ describe('Fix 4: order lifecycle and offline payment semantics', () => {
       admin,
     )
 
-    await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID())
-    await orderService.joinCampaign(campaign.id!, member2.id!, 1, crypto.randomUUID())
+    await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, member2.id!, 1, crypto.randomUUID(), 1)
 
     // Force cutoff
     await db.campaigns.update(campaign.id!, { cutoffAt: Date.now() - 1000 })
@@ -254,7 +261,7 @@ describe('Fix 4: order lifecycle and offline payment semantics', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID())
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
     await db.orders.update(order.id!, { autoCloseAt: Date.now() - 1000 })
     await orderService.autoCloseUnpaid()
 
@@ -282,7 +289,7 @@ describe('Fix 5: dispatch generation from real order data', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 3, crypto.randomUUID())
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, 3, crypto.randomUUID(), 1)
 
     // Confirm the order
     await orderService.transitionStatus(order.id!, 'Confirmed', admin, {
@@ -317,7 +324,7 @@ describe('Fix 5: dispatch generation from real order data', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID())
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
     await orderService.transitionStatus(order.id!, 'Confirmed', admin, {
       expectedVersion: order.version,
       paymentMethod: 'Cash',
@@ -366,8 +373,8 @@ describe('Fix 6: notification correctness', () => {
       admin,
     )
 
-    await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID())
-    await orderService.joinCampaign(campaign.id!, member2.id!, 1, crypto.randomUUID())
+    await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, member2.id!, 1, crypto.randomUUID(), 1)
 
     await db.campaigns.update(campaign.id!, { cutoffAt: Date.now() - 1000 })
     await campaignService.checkAndCloseExpired()

@@ -90,7 +90,7 @@ export default function CourseListPage() {
         },
         currentUser,
       )
-      await courseService.openCourse(course.id!, currentUser)
+      await courseService.openCourse(course.id!, currentUser, { expectedCourseVersion: course.version })
       setForm({
         title: '',
         description: '',
@@ -113,8 +113,9 @@ export default function CourseListPage() {
     setError(null)
     try {
       const course = (coursesRaw ?? []).find((c) => c.id === courseId)
+      if (!course) return
       await courseService.enroll(courseId, currentUser.id, crypto.randomUUID(), {
-        expectedCourseVersion: course?.version,
+        expectedCourseVersion: course.version,
       })
     } catch (enrollError) {
       setError(enrollError instanceof Error ? enrollError.message : 'Enrollment failed.')

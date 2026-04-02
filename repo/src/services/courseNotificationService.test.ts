@@ -53,9 +53,9 @@ describe('course and notification flow', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    const enrollment = await courseService.enroll(course.id!, member.id!, 'op-course-1')
+    const enrollment = await courseService.enroll(course.id!, member.id!, 'op-course-1', { expectedCourseVersion: 2 })
     expect(enrollment.status).toBe('Enrolled')
 
     const inbox = await db.notifications.where('recipientId').equals(member.id!).toArray()
@@ -79,10 +79,12 @@ describe('course and notification flow', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    await courseService.enroll(course.id!, member.id!, 'op-course-2')
-    const waitlisted = await courseService.enroll(course.id!, member2.id!, 'op-course-3')
+    // capacity=1: first enroll fills course (version 2→3)
+    await courseService.enroll(course.id!, member.id!, 'op-course-2', { expectedCourseVersion: 2 })
+    // Course is now Full (version 3); second member gets waitlisted
+    const waitlisted = await courseService.enroll(course.id!, member2.id!, 'op-course-3', { expectedCourseVersion: 3 })
     expect(waitlisted.status).toBe('Waitlisted')
     expect(waitlisted.waitlistPosition).toBe(1)
   })
@@ -105,11 +107,14 @@ describe('course and notification flow', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    const e1 = await courseService.enroll(course.id!, member.id!, 'op-course-4')
-    await courseService.enroll(course.id!, member2.id!, 'op-course-5')
-    await courseService.drop(e1.id!, member, 'Cannot attend')
+    // capacity=1: first enroll fills course (version 2→3)
+    const e1 = await courseService.enroll(course.id!, member.id!, 'op-course-4', { expectedCourseVersion: 2 })
+    await courseService.enroll(course.id!, member2.id!, 'op-course-5', { expectedCourseVersion: 3 })
+    // Drop e1: need current course version and enrollment version
+    const cBeforeDrop = await db.courses.get(course.id!)
+    await courseService.drop(e1.id!, member, 'Cannot attend', { expectedEnrollmentVersion: e1.version, expectedCourseVersion: cBeforeDrop!.version })
 
     const promoted = await db.enrollments
       .where('courseId')
@@ -136,13 +141,14 @@ describe('course and notification flow', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
-    const enrollment = await courseService.enroll(course.id!, member.id!, 'op-course-6')
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
+    const enrollment = await courseService.enroll(course.id!, member.id!, 'op-course-6', { expectedCourseVersion: 2 })
 
-    await expect(courseService.drop(enrollment.id!, member, 'Too late drop')).rejects.toBeInstanceOf(
+    const cDrop = await db.courses.get(course.id!)
+    await expect(courseService.drop(enrollment.id!, member, 'Too late drop', { expectedEnrollmentVersion: enrollment.version, expectedCourseVersion: cDrop!.version })).rejects.toBeInstanceOf(
       EnrollmentError,
     )
-    await expect(courseService.drop(enrollment.id!, member, 'Too late drop')).rejects.toMatchObject({
+    await expect(courseService.drop(enrollment.id!, member, 'Too late drop', { expectedEnrollmentVersion: enrollment.version, expectedCourseVersion: cDrop!.version })).rejects.toMatchObject({
       code: 'ENROLL_DROP_DEADLINE_PASSED',
     })
   })
@@ -175,9 +181,9 @@ describe('course and notification flow', () => {
       },
       instructor,
     )
-    await courseService.openCourse(advanced.id!, instructor)
+    await courseService.openCourse(advanced.id!, instructor, { expectedCourseVersion: 1 })
 
-    await expect(courseService.enroll(advanced.id!, member.id!, 'op-course-7')).rejects.toMatchObject({
+    await expect(courseService.enroll(advanced.id!, member.id!, 'op-course-7', { expectedCourseVersion: 2 })).rejects.toMatchObject({
       code: 'ENROLL_PREREQ_NOT_MET',
       missingCourses: [prereq.id!],
     })
@@ -198,10 +204,11 @@ describe('course and notification flow', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    const first = await courseService.enroll(course.id!, member.id!, 'same-op-id')
-    const second = await courseService.enroll(course.id!, member.id!, 'same-op-id')
+    const first = await courseService.enroll(course.id!, member.id!, 'same-op-id', { expectedCourseVersion: 2 })
+    const c1 = await db.courses.get(course.id!)
+    const second = await courseService.enroll(course.id!, member.id!, 'same-op-id', { expectedCourseVersion: c1!.version })
     expect(second.id).toBe(first.id)
   })
 
@@ -220,26 +227,28 @@ describe('course and notification flow', () => {
       },
       instructor,
     )
-    await courseService.openCourse(course.id!, instructor)
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
     const opened = await db.courses.get(course.id!)
     await db.courses.update(course.id!, { version: (opened?.version ?? 0) + 1 })
 
     await expect(
       courseService.enroll(course.id!, member.id!, 'stale-course-version', {
-        expectedCourseVersion: opened?.version,
+        expectedCourseVersion: opened!.version,
       }),
     ).rejects.toMatchObject({ code: 'ENROLL_VERSION_CONFLICT' })
 
     const freshCourse = await db.courses.get(course.id!)
     const enrollment = await courseService.enroll(course.id!, member.id!, 'fresh-version', {
-      expectedCourseVersion: freshCourse?.version,
+      expectedCourseVersion: freshCourse!.version,
     })
 
     await db.enrollments.update(enrollment.id!, { version: enrollment.version + 1 })
+    const courseForDrop = await db.courses.get(course.id!)
     await expect(
       courseService.drop(enrollment.id!, member, 'Version drift check', {
         expectedEnrollmentVersion: enrollment.version,
+        expectedCourseVersion: courseForDrop!.version,
       }),
     ).rejects.toMatchObject({ code: 'ENROLL_VERSION_CONFLICT' })
   })

@@ -85,11 +85,12 @@ describe('CheckoutDrawer', () => {
 
     expect(joinCampaignMock).toHaveBeenCalledOnce()
     const callArgs = joinCampaignMock.mock.calls[0]
-    expect(callArgs[4]).toMatchObject({
+    expect(callArgs[4]).toBe(1) // expectedCampaignVersion
+    expect(callArgs[5]).toMatchObject({
       promisedPickupWindow: expect.objectContaining({ start: expect.any(Number), end: expect.any(Number) }),
       promisedDeliveryWindow: expect.objectContaining({ start: expect.any(Number), end: expect.any(Number) }),
     })
-    const opts = callArgs[4] as { promisedPickupWindow: { start: number; end: number }; promisedDeliveryWindow: { start: number; end: number } }
+    const opts = callArgs[5] as { promisedPickupWindow: { start: number; end: number }; promisedDeliveryWindow: { start: number; end: number } }
     expect(opts.promisedPickupWindow.end).toBeGreaterThan(opts.promisedPickupWindow.start)
     expect(opts.promisedDeliveryWindow.start).toBeGreaterThan(opts.promisedPickupWindow.end)
   })

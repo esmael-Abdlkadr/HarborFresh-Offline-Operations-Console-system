@@ -58,6 +58,7 @@ export const orderService = {
     memberId: number,
     quantity: number,
     operationId: string,
+    expectedCampaignVersion: number,
     options?: {
       fulfillmentAddress?: string
       promisedPickupWindow?: { start: number; end: number }
@@ -77,6 +78,10 @@ export const orderService = {
       const campaign = await db.campaigns.get(campaignId)
       if (!campaign || campaign.status !== 'Open' || campaign.cutoffAt <= Date.now()) {
         throw new OrderError('ORDER_CAMPAIGN_CLOSED', 'Campaign is closed.')
+      }
+
+      if (campaign.version !== expectedCampaignVersion) {
+        throw new OrderError('ORDER_VERSION_CONFLICT', 'Campaign version conflict.')
       }
 
       const duplicateOrder = await db.orders

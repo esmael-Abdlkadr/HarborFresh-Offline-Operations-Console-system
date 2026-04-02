@@ -1,5 +1,13 @@
 const PBKDF2_ITERATIONS = 100_000
-type FallbackKey = { __fallback: true; keyBytes: Uint8Array }
+
+function requireSubtleCrypto(): SubtleCrypto {
+  if (!crypto.subtle) {
+    throw new Error(
+      'SubtleCrypto is not available. A secure context (HTTPS or localhost) is required for login and finance operations.',
+    )
+  }
+  return crypto.subtle
+}
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
@@ -37,22 +45,9 @@ function base64ToBytes(base64: string): Uint8Array {
 }
 
 async function deriveBits(password: string, saltBytes: Uint8Array): Promise<ArrayBuffer> {
-  if (!crypto.subtle) {
-    // Fallback for environments where SubtleCrypto is unavailable (e.g., some
-    // non-secure E2E origins). Deterministic output keeps auth flows stable.
-    const input = new Uint8Array([...new TextEncoder().encode(password), ...saltBytes])
-    const out = new Uint8Array(32)
-    let state = 0x811c9dc5
-    for (let i = 0; i < PBKDF2_ITERATIONS; i += 1) {
-      const b = input[i % input.length] ?? 0
-      state ^= b
-      state = Math.imul(state, 0x01000193) >>> 0
-      out[i % out.length] = (out[i % out.length] ^ (state & 0xff)) & 0xff
-    }
-    return out.buffer
-  }
+  const subtle = requireSubtleCrypto()
 
-  const baseKey = await crypto.subtle.importKey(
+  const baseKey = await subtle.importKey(
     'raw',
     new TextEncoder().encode(password),
     'PBKDF2',
@@ -60,7 +55,7 @@ async function deriveBits(password: string, saltBytes: Uint8Array): Promise<Arra
     ['deriveBits', 'deriveKey'],
   )
 
-  return crypto.subtle.deriveBits(
+  return subtle.deriveBits(
     {
       name: 'PBKDF2',
       salt: new Uint8Array(saltBytes),
@@ -99,12 +94,9 @@ export async function verifyPassword(
 }
 
 export async function deriveEncryptionKey(password: string, keySalt: string): Promise<CryptoKey> {
-  if (!crypto.subtle) {
-    const keyBytes = new Uint8Array(await deriveBits(password, new Uint8Array(fromHex(keySalt))))
-    return { __fallback: true, keyBytes } as unknown as CryptoKey
-  }
+  const subtle = requireSubtleCrypto()
 
-  const baseKey = await crypto.subtle.importKey(
+  const baseKey = await subtle.importKey(
     'raw',
     new TextEncoder().encode(password),
     'PBKDF2',
@@ -112,7 +104,7 @@ export async function deriveEncryptionKey(password: string, keySalt: string): Pr
     ['deriveKey'],
   )
 
-  return crypto.subtle.deriveKey(
+  return subtle.deriveKey(
     {
       name: 'PBKDF2',
       salt: new Uint8Array(fromHex(keySalt)),
@@ -130,22 +122,11 @@ export async function deriveEncryptionKey(password: string, keySalt: string): Pr
 }
 
 export async function encryptField(value: string, key: CryptoKey): Promise<string> {
+  const subtle = requireSubtleCrypto()
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const plainBytes = new TextEncoder().encode(value)
 
-  const fallback = key as unknown as FallbackKey
-  if (fallback?.__fallback) {
-    const cipherBytes = new Uint8Array(plainBytes.length)
-    for (let i = 0; i < plainBytes.length; i += 1) {
-      cipherBytes[i] = plainBytes[i] ^ fallback.keyBytes[i % fallback.keyBytes.length] ^ iv[i % iv.length]
-    }
-    const payload = new Uint8Array(iv.length + cipherBytes.length)
-    payload.set(iv, 0)
-    payload.set(cipherBytes, iv.length)
-    return bytesToBase64(payload)
-  }
-
-  const cipherBuffer = await crypto.subtle.encrypt(
+  const cipherBuffer = await subtle.encrypt(
     {
       name: 'AES-GCM',
       iv,
@@ -162,20 +143,12 @@ export async function encryptField(value: string, key: CryptoKey): Promise<strin
 }
 
 export async function decryptField(cipher: string, key: CryptoKey): Promise<string> {
+  const subtle = requireSubtleCrypto()
   const payload = base64ToBytes(cipher)
   const iv = payload.slice(0, 12)
   const encrypted = payload.slice(12)
 
-  const fallback = key as unknown as FallbackKey
-  if (fallback?.__fallback) {
-    const plainBytes = new Uint8Array(encrypted.length)
-    for (let i = 0; i < encrypted.length; i += 1) {
-      plainBytes[i] = encrypted[i] ^ fallback.keyBytes[i % fallback.keyBytes.length] ^ iv[i % iv.length]
-    }
-    return new TextDecoder().decode(plainBytes)
-  }
-
-  const plainBuffer = await crypto.subtle.decrypt(
+  const plainBuffer = await subtle.decrypt(
     {
       name: 'AES-GCM',
       iv,

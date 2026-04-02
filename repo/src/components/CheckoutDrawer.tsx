@@ -129,7 +129,7 @@ export function CheckoutDrawer({ open, campaign, memberId, onClose, onSuccess }:
         return
       }
 
-      const order = await orderService.joinCampaign(campaign.id!, memberId, quantity, operationId, {
+      const order = await orderService.joinCampaign(campaign.id!, memberId, quantity, operationId, campaign.version, {
         fulfillmentAddress: address.trim() || undefined,
         promisedPickupWindow: { start: psMs, end: peMs },
         promisedDeliveryWindow: { start: dsMs, end: deMs },

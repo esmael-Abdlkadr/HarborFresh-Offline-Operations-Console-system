@@ -31,12 +31,12 @@ interface CreateCourseInput {
 }
 
 interface EnrollOptions {
-  expectedCourseVersion?: number
+  expectedCourseVersion: number
 }
 
 interface EnrollmentMutationOptions {
-  expectedEnrollmentVersion?: number
-  expectedCourseVersion?: number
+  expectedEnrollmentVersion: number
+  expectedCourseVersion: number
 }
 
 type EnrollmentNotificationArgs = {
@@ -91,8 +91,8 @@ async function createAudit(actor: string, action: string, entityType: string, en
   })
 }
 
-function assertVersion(current: number, expected?: number) {
-  if (expected !== undefined && current !== expected) {
+function assertVersion(current: number, expected: number) {
+  if (current !== expected) {
     throw new EnrollmentError('ENROLL_VERSION_CONFLICT', 'Record version conflict.')
   }
 }
@@ -177,7 +177,7 @@ export const courseService = {
     return { ...course, id }
   },
 
-  async openCourse(courseId: number, actor: User, options?: EnrollOptions): Promise<void> {
+  async openCourse(courseId: number, actor: User, options: EnrollOptions): Promise<void> {
     await db.transaction('rw', db.courses, db.auditLogs, async () => {
       const course = await db.courses.get(courseId)
       if (!course) {
@@ -186,7 +186,7 @@ export const courseService = {
       if (course.capacity < 1) {
         throw new Error('Course capacity must be at least 1.')
       }
-      assertVersion(course.version, options?.expectedCourseVersion)
+      assertVersion(course.version, options.expectedCourseVersion)
 
       await db.courses.put({
         ...course,
@@ -201,7 +201,7 @@ export const courseService = {
     courseId: number,
     memberId: number,
     operationId: string,
-    options?: EnrollOptions,
+    options: EnrollOptions,
   ): Promise<Enrollment> {
     // Fast idempotency check outside the transaction first
     const existing = await db.enrollments.where('operationId').equals(operationId).first()
@@ -246,7 +246,7 @@ export const courseService = {
         if (!course || !(course.status === 'Open' || course.status === 'Full')) {
           throw new Error('Course is not open for enrollment.')
         }
-        assertVersion(course.version, options?.expectedCourseVersion)
+        assertVersion(course.version, options.expectedCourseVersion)
 
         const completed = await db.enrollments
           .where('memberId')
@@ -343,8 +343,8 @@ export const courseService = {
   async drop(
     enrollmentId: number,
     actor: User,
-    reason?: string,
-    options?: EnrollmentMutationOptions,
+    reason: string,
+    options: EnrollmentMutationOptions,
   ): Promise<void> {
     const result = await db.transaction(
       'rw',
@@ -363,13 +363,13 @@ export const courseService = {
       if (!(enrollment.status === 'Enrolled' || enrollment.status === 'Waitlisted')) {
         throw new EnrollmentError('ENROLL_INVALID_STATE', 'Enrollment cannot be dropped.')
       }
-      assertVersion(enrollment.version, options?.expectedEnrollmentVersion)
+      assertVersion(enrollment.version, options.expectedEnrollmentVersion)
 
       const course = await db.courses.get(enrollment.courseId)
       if (!course) {
         throw new EnrollmentError('ENROLL_NOT_FOUND', 'Course not found.')
       }
-      assertVersion(course.version, options?.expectedCourseVersion)
+      assertVersion(course.version, options.expectedCourseVersion)
 
       const deadlineMs = parseUsDateTime(course.dropDeadline).getTime()
       if (Date.now() > deadlineMs) {
@@ -412,7 +412,7 @@ export const courseService = {
     }
   },
 
-  async promoteWaitlist(courseId: number, options?: EnrollOptions): Promise<void> {
+  async promoteWaitlist(courseId: number, options: EnrollOptions): Promise<void> {
     const promoted = await db.transaction(
       'rw',
       db.enrollments,
@@ -422,7 +422,7 @@ export const courseService = {
       if (!course) {
         throw new EnrollmentError('ENROLL_NOT_FOUND', 'Course not found.')
       }
-      assertVersion(course.version, options?.expectedCourseVersion)
+      assertVersion(course.version, options.expectedCourseVersion)
       return promoteWaitlistInternal(course)
     })
 
@@ -437,8 +437,8 @@ export const courseService = {
     enrollmentId: number,
     status: 'Completed' | 'NoShow',
     actor: User,
-    reason?: string,
-    options?: EnrollmentMutationOptions,
+    reason: string,
+    options: EnrollmentMutationOptions,
   ): Promise<void> {
     if (!(actor.role === 'Instructor' || actor.role === 'Administrator')) {
       throw new EnrollmentError('ENROLL_INVALID_STATE', 'Only instructors or administrators can mark enrollment status.')
@@ -449,7 +449,7 @@ export const courseService = {
       if (!enrollment) {
         throw new EnrollmentError('ENROLL_NOT_FOUND', 'Enrollment not found.')
       }
-      assertVersion(enrollment.version, options?.expectedEnrollmentVersion)
+      assertVersion(enrollment.version, options.expectedEnrollmentVersion)
 
       await db.enrollments.put({
         ...enrollment,
