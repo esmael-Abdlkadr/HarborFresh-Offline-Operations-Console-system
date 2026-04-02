@@ -16,6 +16,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: test-runner
+    environment:
+      # Ensure deterministic seeded users in validator containers.
+      VITE_TEST_SEED: "true"
     profiles:
       - test
 
