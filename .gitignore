@@ -1,0 +1,13 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Repo build/test artifacts
+repo/node_modules/
+repo/dist/
+repo/test-results/
+repo/.tmp/
+
+# Local env files
+repo/.env
+repo/.env.*

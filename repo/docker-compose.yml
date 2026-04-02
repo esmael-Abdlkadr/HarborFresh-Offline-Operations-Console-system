@@ -1,0 +1,36 @@
+services:
+
+  # ── Production app (Nginx static serve) ──────────────────────────────────────
+  harborfresh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    ports:
+      - "8120:80"
+    restart: unless-stopped
+
+  # ── Unit tests + TypeScript check + Lint ─────────────────────────────────────
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test-runner
+    profiles:
+      - test
+
+  # ── Playwright E2E (runs against the harborfresh service) ────────────────────
+  e2e:
+    image: mcr.microsoft.com/playwright:v1.59.0-noble
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+      # Reuse npm cache between runs to reduce install time.
+      - npm_cache:/root/.npm
+    command: sh -c "npm ci --prefer-offline --no-audit --no-fund && npx playwright test --project=chromium"
+    profiles:
+      - test
+
+volumes:
+  npm_cache:
