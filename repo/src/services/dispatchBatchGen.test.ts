@@ -218,7 +218,8 @@ describe('dispatchService.generatePlan', () => {
     })
 
     // Generate tasks from orders
-    await dispatchService.generateTasksFromOrders()
+    const dispatcher = await getUser('dispatcher')
+    await dispatchService.generateTasksFromOrders(dispatcher)
 
     // Verify the task uses the stored windows
     const task = await db.deliveryTasks.where('orderId').equals(orderId).first()

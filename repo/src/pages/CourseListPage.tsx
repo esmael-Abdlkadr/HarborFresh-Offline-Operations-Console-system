@@ -114,7 +114,7 @@ export default function CourseListPage() {
     try {
       const course = (coursesRaw ?? []).find((c) => c.id === courseId)
       if (!course) return
-      await courseService.enroll(courseId, currentUser.id, crypto.randomUUID(), {
+      await courseService.enroll(courseId, currentUser.id, currentUser, crypto.randomUUID(), {
         expectedCourseVersion: course.version,
       })
     } catch (enrollError) {

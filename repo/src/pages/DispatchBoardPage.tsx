@@ -210,7 +210,7 @@ export default function DispatchBoardPage() {
     if (!currentUser) return
     setError(null)
     try {
-      const count = await dispatchService.generateTasksFromOrders()
+      const count = await dispatchService.generateTasksFromOrders(currentUser)
       if (count === 0) {
         setError('No new confirmed orders to generate delivery tasks from.')
       }

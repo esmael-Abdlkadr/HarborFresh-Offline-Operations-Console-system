@@ -1,6 +1,6 @@
 import { db } from '../db/db.ts'
 import { notificationService } from './notificationService.ts'
-import type { Order, User } from '../types/index.ts'
+import type { Order, User, UserRole } from '../types/index.ts'
 
 export type OrderStatus = Order['status']
 
@@ -18,6 +18,7 @@ export class OrderError extends Error {
     | 'ORDER_VERSION_CONFLICT'
     | 'ORDER_NOT_FOUND'
     | 'ORDER_INVALID_QUANTITY'
+    | 'ORDER_RBAC_DENIED'
 
   constructor(code: OrderError['code'], message: string) {
     super(message)
@@ -56,6 +57,7 @@ export const orderService = {
   async joinCampaign(
     campaignId: number,
     memberId: number,
+    actor: User,
     quantity: number,
     operationId: string,
     expectedCampaignVersion: number,
@@ -65,6 +67,10 @@ export const orderService = {
       promisedDeliveryWindow?: { start: number; end: number }
     },
   ): Promise<Order> {
+    if (actor.role !== 'Administrator' && actor.id !== memberId) {
+      throw new OrderError('ORDER_RBAC_DENIED', 'You can only join a campaign for yourself unless you are an Administrator.')
+    }
+
     const existing = await db.orders.where('operationId').equals(operationId).first()
     if (existing) {
       return existing
@@ -240,6 +246,14 @@ export const orderService = {
         })
       }
     }
+  },
+
+  async getCampaignOrders(campaignId: number, actor: { id?: number; role: UserRole }): Promise<Order[]> {
+    if (actor.role === 'Administrator') {
+      return db.orders.where('campaignId').equals(campaignId).toArray()
+    }
+    if (!actor.id) return []
+    return db.orders.where('[campaignId+memberId]').equals([campaignId, actor.id]).toArray()
   },
 }
 

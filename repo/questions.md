@@ -5,8 +5,8 @@
 - **Assumption/Solution:** implemented both signatures in one overloaded `notificationService.send` to preserve backward compatibility and satisfy template-data requirements.
 
 ## 2) Export/import and user credentials
-- **Ambiguity:** export omits `passwordHash`/`salt`, but import must restore users.
-- **Assumption/Solution:** import restores user records and reuses existing local credential hashes/salts by username when available; if unavailable, placeholders are used, and local auth behavior follows available credential state.
+- **Ambiguity:** the prompt requires offline transfer of the full dataset, but does not specify whether exported user records should include credential fields (`passwordHash`, `salt`) or strip them and require manual credential re-setup on the target device.
+- **Solution:** implemented with credential fields included in the export. The export snapshot includes `passwordHash` and `salt` for every user (see `src/services/financeService.ts`, `exportDataset`). No plaintext passwords are ever stored or exported — only the irreversible PBKDF2 hashes and their salts. Import fully replaces all local IndexedDB tables with the snapshot, so users can log in on the restored device immediately without any re-setup or placeholder credentials.
 
 ## 3) Campaign/order + fish dependencies in E2E
 - **Ambiguity:** campaign creation requires published fish, but seed data does not guarantee one.

@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CheckoutDrawer } from '../../components/CheckoutDrawer.tsx'
+import type { User } from '../../types/index.ts'
+
+const mockActor: User = { id: 2, username: 'member', role: 'Member', passwordHash: '', salt: '', failedAttempts: 0 }
 
 const { joinCampaignMock } = vi.hoisted(() => ({
   joinCampaignMock: vi.fn(),
@@ -39,7 +42,7 @@ describe('CheckoutDrawer', () => {
           createdAt: Date.now(),
           version: 1,
         }}
-        memberId={2}
+        actor={mockActor}
         onClose={() => {}}
         onSuccess={() => {}}
       />,
@@ -70,7 +73,7 @@ describe('CheckoutDrawer', () => {
           createdAt: Date.now(),
           version: 1,
         }}
-        memberId={3}
+        actor={mockActor}
         onClose={() => {}}
         onSuccess={() => {}}
       />,
@@ -85,12 +88,13 @@ describe('CheckoutDrawer', () => {
 
     expect(joinCampaignMock).toHaveBeenCalledOnce()
     const callArgs = joinCampaignMock.mock.calls[0]
-    expect(callArgs[4]).toBe(1) // expectedCampaignVersion
-    expect(callArgs[5]).toMatchObject({
+    // signature: joinCampaign(campaignId, memberId, actor, quantity, operationId, campaignVersion, options)
+    expect(callArgs[5]).toBe(1) // expectedCampaignVersion
+    expect(callArgs[6]).toMatchObject({
       promisedPickupWindow: expect.objectContaining({ start: expect.any(Number), end: expect.any(Number) }),
       promisedDeliveryWindow: expect.objectContaining({ start: expect.any(Number), end: expect.any(Number) }),
     })
-    const opts = callArgs[5] as { promisedPickupWindow: { start: number; end: number }; promisedDeliveryWindow: { start: number; end: number } }
+    const opts = callArgs[6] as { promisedPickupWindow: { start: number; end: number }; promisedDeliveryWindow: { start: number; end: number } }
     expect(opts.promisedPickupWindow.end).toBeGreaterThan(opts.promisedPickupWindow.start)
     expect(opts.promisedDeliveryWindow.start).toBeGreaterThan(opts.promisedPickupWindow.end)
   })
@@ -115,7 +119,7 @@ describe('CheckoutDrawer', () => {
           createdAt: Date.now(),
           version: 1,
         }}
-        memberId={2}
+        actor={mockActor}
         onClose={() => {}}
         onSuccess={() => {}}
       />,

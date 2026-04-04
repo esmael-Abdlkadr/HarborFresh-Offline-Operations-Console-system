@@ -1,32 +1,42 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { notificationService } from '../services/notificationService.ts'
+import { userService } from '../services/userService.ts'
 import { Table } from '../components/ui/Table.tsx'
 import type { Notification } from '../types/index.ts'
 
 export default function NotificationsPage() {
   const { currentUser, hasRole } = useAuth()
-  const notificationsRaw = useLiveQuery(() => db.notifications.orderBy('createdAt').reverse().toArray(), [])
-  const usersRaw = useLiveQuery(() => db.users.toArray(), [])
-  const users = usersRaw ?? []
+  const notificationsRaw = useLiveQuery(
+    () => (currentUser ? notificationService.getInbox(currentUser) : undefined),
+    [currentUser?.id, currentUser?.role],
+  )
   const [filter, setFilter] = useState<'All' | 'Unread' | 'Read' | 'Archived'>('All')
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const notifications = useMemo(() => notificationsRaw ?? [], [notificationsRaw])
 
+  // Admin-only: resolve recipient usernames for the Send Log table.
+  // Uses targeted ID lookup instead of fetching the entire users table.
+  const isAdmin = currentUser?.role === 'Administrator'
+  const adminUsernameMap = useLiveQuery(
+    async () => {
+      if (!isAdmin || notifications.length === 0) return new Map<number, string>()
+      const ids = [...new Set(notifications.map((n) => n.recipientId))]
+      return userService.getUsernames(ids)
+    },
+    [notifications, isAdmin],
+  )
+
   const inbox = useMemo(() => {
-    const scoped = hasRole('Administrator')
-      ? notifications
-      : notifications.filter((item) => item.recipientId === currentUser?.id)
-    return scoped.filter((item) => {
+    return notifications.filter((item) => {
       if (filter === 'Unread') return !item.isRead && item.status !== 'Archived'
       if (filter === 'Read') return item.isRead && item.status !== 'Archived'
       if (filter === 'Archived') return item.status === 'Archived'
       return true
     })
-  }, [currentUser?.id, filter, hasRole, notifications])
+  }, [filter, notifications])
 
   const selected = inbox.find((item) => item.id === selectedId) ?? null
 
@@ -133,7 +143,7 @@ export default function NotificationsPage() {
               notifications.length === 0
                 ? [['No notifications have been delivered yet.', '', '', '']]
                 : notifications.map((item) => [
-                    users.find((user) => user.id === item.recipientId)?.username ?? item.recipientId,
+                    adminUsernameMap?.get(item.recipientId) ?? item.recipientId,
                     item.templateKey,
                     item.status,
                     item.retries,

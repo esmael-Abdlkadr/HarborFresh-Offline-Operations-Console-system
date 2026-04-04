@@ -65,8 +65,8 @@ describe('campaign and order services', () => {
     expect(campaign.status).toBe('Open')
 
     const opId = '11111111-1111-4111-8111-111111111111'
-    const first = await orderService.joinCampaign(campaign.id!, member.id!, 2, opId, 1)
-    const second = await orderService.joinCampaign(campaign.id!, member.id!, 2, opId, 1)
+    const first = await orderService.joinCampaign(campaign.id!, member.id!, member, 2, opId, 1)
+    const second = await orderService.joinCampaign(campaign.id!, member.id!, member, 2, opId, 1)
     expect(second.id).toBe(first.id)
   })
 
@@ -88,9 +88,9 @@ describe('campaign and order services', () => {
       admin,
     )
 
-    await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
     await expect(
-      orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1),
+      orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1),
     ).rejects.toMatchObject({ code: 'ORDER_ALREADY_EXISTS' })
   })
 
@@ -112,7 +112,7 @@ describe('campaign and order services', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
     await db.orders.update(order.id!, { autoCloseAt: Date.now() - 1000 })
     await orderService.autoCloseUnpaid()
 
@@ -139,8 +139,8 @@ describe('campaign and order services', () => {
       admin,
     )
 
-    await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
-    await orderService.joinCampaign(campaign.id!, editor.id!, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, editor.id!, editor, 1, crypto.randomUUID(), 1)
 
     await db.campaigns.update(campaign.id!, { cutoffAt: Date.now() - 1000 })
     await campaignService.checkAndCloseExpired()
@@ -171,7 +171,7 @@ describe('campaign and order services', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
     await db.campaigns.update(campaign.id!, { cutoffAt: Date.now() - 1000 })
     await campaignService.checkAndCloseExpired()
 
@@ -199,7 +199,7 @@ describe('campaign and order services', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
     await expect(
       orderService.transitionStatus(order.id!, 'Confirmed', admin, {
         expectedVersion: order.version + 1,
@@ -232,7 +232,7 @@ describe('campaign and order services', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
     await orderService.transitionStatus(order.id!, 'Confirmed', admin, {
       expectedVersion: order.version,
       paymentMethod: 'ManualMark',
@@ -265,7 +265,7 @@ describe('campaign and order services', () => {
     await db.campaigns.update(campaign.id!, { version: campaign.version + 1 })
 
     await expect(
-      orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), campaign.version),
+      orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), campaign.version),
     ).rejects.toMatchObject({ code: 'ORDER_VERSION_CONFLICT' })
   })
 })

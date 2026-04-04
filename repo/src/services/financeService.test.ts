@@ -224,7 +224,7 @@ describe('financeService', () => {
     URL.revokeObjectURL = vi.fn(() => {})
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    const blob = await financeService.exportDataset('ExportPass#1!')
+    const blob = await financeService.exportDataset('ExportPass#1!', clerk)
     expect(blob).toBeTruthy()
 
     const payload = {
@@ -272,10 +272,10 @@ describe('financeService', () => {
       arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(wrapper)).buffer,
     } as unknown as File
 
-    await expect(financeService.importDataset(file, exportPassword, false)).rejects.toBeInstanceOf(
+    await expect(financeService.importDataset(file, exportPassword, clerk, false)).rejects.toBeInstanceOf(
       FinanceError,
     )
-    await financeService.importDataset(file, exportPassword, true)
+    await financeService.importDataset(file, exportPassword, clerk, true)
 
     const after = await db.ledgerEntries.toArray()
     expect(after.length).toBeGreaterThan(0)
@@ -283,5 +283,30 @@ describe('financeService', () => {
     URL.createObjectURL = originalCreateObjectURL
     URL.revokeObjectURL = originalRevokeObjectURL
     clickSpy.mockRestore()
+  })
+})
+
+describe('financeService RBAC', () => {
+  it('FinanceClerk can export dataset', async () => {
+    const clerk = await getUser('finance')
+    URL.createObjectURL = vi.fn(() => 'blob:test')
+    URL.revokeObjectURL = vi.fn(() => {})
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    await expect(financeService.exportDataset('TestPass#1!', clerk)).resolves.toBeTruthy()
+  })
+
+  it('non-finance role cannot export dataset', async () => {
+    const member = await getUser('member')
+    await expect(financeService.exportDataset('TestPass#1!', member)).rejects.toMatchObject({
+      code: 'FINANCE_ROLE_FORBIDDEN',
+    })
+  })
+
+  it('non-finance role cannot import dataset', async () => {
+    const member = await getUser('member')
+    const dummy = { arrayBuffer: async () => new ArrayBuffer(0) } as unknown as File
+    await expect(financeService.importDataset(dummy, 'pass', member, true)).rejects.toMatchObject({
+      code: 'FINANCE_ROLE_FORBIDDEN',
+    })
   })
 })

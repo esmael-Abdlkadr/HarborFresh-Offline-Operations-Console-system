@@ -37,22 +37,22 @@ No `npm install` or local Node setup required — Docker handles everything.
 
 ## First-Run Bootstrap
 
-On the very first launch (empty IndexedDB), HarborFresh creates a single **Administrator** account with a randomly generated one-time password. The Bootstrap Setup page displays this password and requires you to set a permanent password before any other feature is accessible.
+On the very first launch (empty IndexedDB), HarborFresh creates a single **Administrator** account with a randomly generated one-time password.
 
 1. Open the app — it redirects you to `/login`.
-2. Log in with username `admin` and the displayed bootstrap password.
-3. You are taken to the **Set Your Admin Password** page. Enter and confirm a new password (min 12 characters).
+2. The login page detects the first-run state and **displays the one-time bootstrap password** in a highlighted banner at the top. Use username `admin` and that password to sign in.
+3. You are taken to the **Set Your Admin Password** page, which also shows the bootstrap password for reference. Enter and confirm a new permanent password (min 12 characters).
 4. After saving, you are redirected to the dashboard and can create additional users from `/admin`.
 
 The one-time password is stored only in `sessionStorage` during the first session and is cleared after the password change. It is never written to localStorage or IndexedDB.
 
-## Run All Tests (Docker)
+## Run All Tests (Docker) — CI / clean-room verification
 
 ```bash
 bash run_tests.sh
 ```
 
-Three stages, all in Docker:
+Use this path for CI or when you need a reproducible, isolated test environment with no local Node/browser setup. Three stages, all in Docker:
 
 | Stage | What runs | Container |
 |---|---|---|
@@ -60,7 +60,7 @@ Three stages, all in Docker:
 | 2 | App starts for E2E | `nginx:1.27-alpine` |
 | 3 | Playwright chromium E2E | `mcr.microsoft.com/playwright:v1.52.0-noble` |
 
-## Run Tests Locally
+## Run Tests Locally — day-to-day development
 
 ```bash
 npm run build              # production build
@@ -83,7 +83,7 @@ E2E tests start the dev server with `VITE_TEST_SEED=true`, which seeds known tes
 
 ## Architecture Notes
 
-- **Service layer pattern:** all business writes and reads are performed through `src/services/*` modules.
+- **Service layer pattern:** all business writes and reads are performed through `src/services/*` modules. Data queries are scoped by the calling user's role — non-admin users receive only their own records (notifications, orders, enrollments) from the service layer, not the full table.
 - **IndexedDB schema:** centralized in `src/db/schema.ts`, with typed records in `src/types/index.ts`.
 - **Encryption lifecycle:** field-level encryption keys are derived at login from the user password and held only in React memory context (`useAuth`), never persisted to disk. After a page refresh, the session is restored but the encryption key is not available. The Finance module explicitly requires a fresh login to re-derive the key.
 - **Campaign creation:** both Administrator and Member roles can create group-buy campaigns. Members can start campaigns referencing published fish entries.

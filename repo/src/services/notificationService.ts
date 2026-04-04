@@ -164,6 +164,15 @@ export const notificationService = {
     await this.processRetryQueue()
   },
 
+  async getInbox(actor: { id?: number; role: UserRole }): Promise<Notification[]> {
+    if (actor.role === 'Administrator') {
+      return db.notifications.orderBy('createdAt').reverse().toArray()
+    }
+    if (!actor.id) return []
+    const items = await db.notifications.where('recipientId').equals(actor.id).toArray()
+    return items.sort((a, b) => b.createdAt - a.createdAt)
+  },
+
   async markRead(notificationId: number, actor: { id?: number; role: UserRole }): Promise<void> {
     const notification = await db.notifications.get(notificationId)
     if (!notification) return

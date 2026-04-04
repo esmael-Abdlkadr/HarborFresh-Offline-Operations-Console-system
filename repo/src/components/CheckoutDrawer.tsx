@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { orderService } from '../services/orderService.ts'
-import type { Campaign, Order } from '../types/index.ts'
+import type { Campaign, Order, User } from '../types/index.ts'
 
 interface CheckoutDrawerProps {
   open: boolean
   campaign: Campaign
-  memberId: number
+  actor: User
   onClose: () => void
   onSuccess: (order: Order) => void
 }
@@ -22,7 +22,7 @@ function fromDateTimeLocal(val: string): number | null {
   return Number.isFinite(ms) ? ms : null
 }
 
-export function CheckoutDrawer({ open, campaign, memberId, onClose, onSuccess }: CheckoutDrawerProps) {
+export function CheckoutDrawer({ open, campaign, actor, onClose, onSuccess }: CheckoutDrawerProps) {
   const [quantity, setQuantity] = useState(0)
   const [address, setAddress] = useState('')
   const [loading, setLoading] = useState(false)
@@ -129,7 +129,7 @@ export function CheckoutDrawer({ open, campaign, memberId, onClose, onSuccess }:
         return
       }
 
-      const order = await orderService.joinCampaign(campaign.id!, memberId, quantity, operationId, campaign.version, {
+      const order = await orderService.joinCampaign(campaign.id!, actor.id!, actor, quantity, operationId, campaign.version, {
         fulfillmentAddress: address.trim() || undefined,
         promisedPickupWindow: { start: psMs, end: peMs },
         promisedDeliveryWindow: { start: dsMs, end: deMs },

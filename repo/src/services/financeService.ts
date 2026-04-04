@@ -316,7 +316,10 @@ export const financeService = {
     }
   },
 
-  async exportDataset(password: string): Promise<Blob> {
+  async exportDataset(password: string, actor: User): Promise<Blob> {
+    if (actor.role !== 'Administrator' && actor.role !== 'FinanceClerk') {
+      throw new FinanceError('FINANCE_ROLE_FORBIDDEN', 'Only Administrator or FinanceClerk can export data.')
+    }
     const usersRaw = await db.users.toArray()
     // Include all user fields (passwordHash and salt are already hashed/salted, not plaintext)
     const users = usersRaw.map((user) => ({
@@ -383,7 +386,10 @@ export const financeService = {
     return blob
   },
 
-  async importDataset(file: File, password: string, confirmed = false): Promise<void> {
+  async importDataset(file: File, password: string, actor: User, confirmed = false): Promise<void> {
+    if (actor.role !== 'Administrator' && actor.role !== 'FinanceClerk') {
+      throw new FinanceError('FINANCE_ROLE_FORBIDDEN', 'Only Administrator or FinanceClerk can import data.')
+    }
     if (!confirmed) {
       throw new FinanceError(
         'DATASET_REPLACE_CONFIRM_REQUIRED',

@@ -88,7 +88,7 @@ export default function FinancePage() {
   async function runExport() {
     setError(null)
     try {
-      await financeService.exportDataset(exportPassword)
+      await financeService.exportDataset(exportPassword, currentUser!)
       setExportPassword('')
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : 'Export failed.')
@@ -99,7 +99,7 @@ export default function FinancePage() {
     if (!importFile) return
     setError(null)
     try {
-      await financeService.importDataset(importFile, importPassword, confirmed)
+      await financeService.importDataset(importFile, importPassword, currentUser!, confirmed)
       setImportPassword('')
       setImportFile(null)
       setConfirmImport(false)

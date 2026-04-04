@@ -83,7 +83,8 @@ function assertDispatchRole(actor: User) {
 }
 
 export const dispatchService = {
-  async generateTasksFromOrders(): Promise<number> {
+  async generateTasksFromOrders(actor: User): Promise<number> {
+    assertDispatchRole(actor)
     const confirmedOrders = await db.orders.where('status').equals('Confirmed').toArray()
     let created = 0
 
@@ -357,7 +358,7 @@ export const dispatchService = {
     const actorId = actor.id
 
     // First generate tasks from confirmed orders
-    await dispatchService.generateTasksFromOrders()
+    await dispatchService.generateTasksFromOrders(actor)
 
     // Get unassigned tasks for this date
     const range = parseDateRange(date)

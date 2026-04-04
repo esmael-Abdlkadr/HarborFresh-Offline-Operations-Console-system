@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { courseService, EnrollmentError } from '../services/courseService.ts'
+import { userService } from '../services/userService.ts'
 import type { Enrollment } from '../types/index.ts'
 
 export default function CourseDetailPage() {
@@ -11,17 +12,31 @@ export default function CourseDetailPage() {
   const courseId = Number(id)
   const { currentUser, hasRole } = useAuth()
   const course = useLiveQuery(() => (Number.isFinite(courseId) ? db.courses.get(courseId) : undefined), [courseId])
-  const enrollmentsRaw = useLiveQuery<Enrollment[]>(
-    async () => {
-      if (!Number.isFinite(courseId)) {
-        return []
-      }
-      return db.enrollments.where('courseId').equals(courseId).toArray()
+
+  // Scoped query: members fetch only their own enrollment; admin/instructor see all
+  const enrollmentsRaw = useLiveQuery(
+    () => {
+      if (!Number.isFinite(courseId) || !currentUser) return undefined
+      return courseService.getEnrollments(courseId, currentUser)
     },
-    [courseId],
+    [courseId, currentUser?.id, currentUser?.role],
   )
-  const enrollments = enrollmentsRaw ?? []
-  const users = useLiveQuery(() => db.users.toArray(), []) ?? []
+  const enrollments = useMemo(() => enrollmentsRaw ?? [], [enrollmentsRaw])
+
+  // Admin/Instructor only: resolve member usernames for the enrollment tables.
+  // Uses targeted ID lookup instead of fetching the entire users table.
+  const isStaff = currentUser?.role === 'Administrator' || currentUser?.role === 'Instructor'
+  const staffUserMap = useLiveQuery(
+    async () => {
+      if (!isStaff || enrollments.length === 0) return new Map<number, string>()
+      const memberIds = enrollments.map((e) => e.memberId)
+      const actorIds = enrollments.flatMap((e) => e.changeHistory.map((c) => c.actor))
+      const allIds = [...new Set([...memberIds, ...actorIds])]
+      return userService.getUsernames(allIds)
+    },
+    [enrollments, isStaff],
+  )
+
   const [tab, setTab] = useState<'enrollment' | 'waitlist' | 'history'>('enrollment')
   const [error, setError] = useState<string | null>(null)
   const [feeInput, setFeeInput] = useState('')
@@ -105,6 +120,8 @@ export default function CourseDetailPage() {
     )
   }
 
+  const userMap = staffUserMap ?? new Map<number, string>()
+
   return (
     <main className="page">
       <section className="card">
@@ -145,7 +162,7 @@ export default function CourseDetailPage() {
                 <tbody>
                   {enrollments.filter((item) => item.status !== 'Waitlisted').map((item) => (
                     <tr key={item.id} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: '0.5rem' }}>{users.find((u) => u.id === item.memberId)?.username ?? `User ${item.memberId}`}</td>
+                      <td style={{ padding: '0.5rem' }}>{userMap.get(item.memberId) ?? `User ${item.memberId}`}</td>
                       <td style={{ padding: '0.5rem' }}>{item.status}</td>
                       <td style={{ padding: '0.5rem', display: 'flex', gap: '0.4rem' }}>
                         <button className="btn secondary" onClick={() => void markStatus(item.id!, 'Completed')}>Mark Completed</button>
@@ -165,7 +182,7 @@ export default function CourseDetailPage() {
                 .sort((a, b) => (a.waitlistPosition ?? 0) - (b.waitlistPosition ?? 0))
                 .map((item) => (
                   <div key={item.id} className="card" style={{ marginTop: '0.4rem' }}>
-                    {users.find((u) => u.id === item.memberId)?.username ?? `User ${item.memberId}`} - position {item.waitlistPosition}
+                    {userMap.get(item.memberId) ?? `User ${item.memberId}`} - position {item.waitlistPosition}
                   </div>
                 ))}
             </div>
@@ -175,7 +192,7 @@ export default function CourseDetailPage() {
             <div style={{ marginTop: '0.7rem' }}>
               {history.map((item, idx) => (
                 <div key={`${item.enrollmentId}-${idx}`} className="card" style={{ marginTop: '0.4rem' }}>
-                  {new Date(item.timestamp).toLocaleString()} - Enrollment #{item.enrollmentId}: {item.fromStatus} -&gt; {item.toStatus} by {users.find((u) => u.id === item.actor)?.username ?? item.actor}
+                  {new Date(item.timestamp).toLocaleString()} - Enrollment #{item.enrollmentId}: {item.fromStatus} -&gt; {item.toStatus} by {userMap.get(item.actor) ?? item.actor}
                   {item.reason ? ` (${item.reason})` : ''}
                 </div>
               ))}

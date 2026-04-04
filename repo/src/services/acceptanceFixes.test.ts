@@ -81,12 +81,12 @@ describe('Fix 1: course enrollment integrity', () => {
     )
     await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    const first = await courseService.enroll(course.id!, member.id!, 'op-1', { expectedCourseVersion: 2 })
+    const first = await courseService.enroll(course.id!, member.id!, member, 'op-1', { expectedCourseVersion: 2 })
     expect(first.status).toBe('Enrolled')
 
     // Second enrollment with different operationId should return the existing enrollment
     const c1 = await db.courses.get(course.id!)
-    const second = await courseService.enroll(course.id!, member.id!, 'op-2', { expectedCourseVersion: c1!.version })
+    const second = await courseService.enroll(course.id!, member.id!, member, 'op-2', { expectedCourseVersion: c1!.version })
     expect(second.id).toBe(first.id)
 
     // Verify only one enrollment exists
@@ -116,9 +116,9 @@ describe('Fix 1: course enrollment integrity', () => {
     )
     await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
-    const first = await courseService.enroll(course.id!, member.id!, 'same-op', { expectedCourseVersion: 2 })
+    const first = await courseService.enroll(course.id!, member.id!, member, 'same-op', { expectedCourseVersion: 2 })
     const c1 = await db.courses.get(course.id!)
-    const second = await courseService.enroll(course.id!, member.id!, 'same-op', { expectedCourseVersion: c1!.version })
+    const second = await courseService.enroll(course.id!, member.id!, member, 'same-op', { expectedCourseVersion: c1!.version })
     expect(second.id).toBe(first.id)
   })
 
@@ -141,12 +141,12 @@ describe('Fix 1: course enrollment integrity', () => {
     await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
 
     // capacity=1, so first enroll fills it (course version goes 2→3)
-    await courseService.enroll(course.id!, member.id!, 'op-a', { expectedCourseVersion: 2 })
+    await courseService.enroll(course.id!, member.id!, member, 'op-a', { expectedCourseVersion: 2 })
     // Duplicate enrollments for same member return existing — read current version each time
     let cv = (await db.courses.get(course.id!))!.version
-    await courseService.enroll(course.id!, member.id!, 'op-b', { expectedCourseVersion: cv })
+    await courseService.enroll(course.id!, member.id!, member, 'op-b', { expectedCourseVersion: cv })
     cv = (await db.courses.get(course.id!))!.version
-    await courseService.enroll(course.id!, member.id!, 'op-c', { expectedCourseVersion: cv })
+    await courseService.enroll(course.id!, member.id!, member, 'op-c', { expectedCourseVersion: cv })
 
     const enrolled = await db.enrollments
       .where('courseId')
@@ -158,7 +158,7 @@ describe('Fix 1: course enrollment integrity', () => {
     // A different member should still be able to get waitlisted
     const member2 = await ensureMember('member2-cap')
     cv = (await db.courses.get(course.id!))!.version
-    const e2 = await courseService.enroll(course.id!, member2.id!, 'op-d', { expectedCourseVersion: cv })
+    const e2 = await courseService.enroll(course.id!, member2.id!, member2, 'op-d', { expectedCourseVersion: cv })
     expect(e2.status).toBe('Waitlisted')
   })
 })
@@ -225,8 +225,8 @@ describe('Fix 4: order lifecycle and offline payment semantics', () => {
       admin,
     )
 
-    await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
-    await orderService.joinCampaign(campaign.id!, member2.id!, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, member2.id!, member2, 1, crypto.randomUUID(), 1)
 
     // Force cutoff
     await db.campaigns.update(campaign.id!, { cutoffAt: Date.now() - 1000 })
@@ -261,7 +261,7 @@ describe('Fix 4: order lifecycle and offline payment semantics', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
     await db.orders.update(order.id!, { autoCloseAt: Date.now() - 1000 })
     await orderService.autoCloseUnpaid()
 
@@ -289,7 +289,7 @@ describe('Fix 5: dispatch generation from real order data', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 3, crypto.randomUUID(), 1)
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, member, 3, crypto.randomUUID(), 1)
 
     // Confirm the order
     await orderService.transitionStatus(order.id!, 'Confirmed', admin, {
@@ -298,7 +298,7 @@ describe('Fix 5: dispatch generation from real order data', () => {
       paymentNote: 'Paid in cash',
     })
 
-    const count = await dispatchService.generateTasksFromOrders()
+    const count = await dispatchService.generateTasksFromOrders(admin)
     expect(count).toBe(1)
 
     const tasks = await db.deliveryTasks.where('orderId').equals(order.id!).toArray()
@@ -324,14 +324,14 @@ describe('Fix 5: dispatch generation from real order data', () => {
       admin,
     )
 
-    const order = await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
+    const order = await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
     await orderService.transitionStatus(order.id!, 'Confirmed', admin, {
       expectedVersion: order.version,
       paymentMethod: 'Cash',
     })
 
-    await dispatchService.generateTasksFromOrders()
-    const second = await dispatchService.generateTasksFromOrders()
+    await dispatchService.generateTasksFromOrders(admin)
+    const second = await dispatchService.generateTasksFromOrders(admin)
     expect(second).toBe(0)
 
     const tasks = await db.deliveryTasks.where('orderId').equals(order.id!).toArray()
@@ -373,8 +373,8 @@ describe('Fix 6: notification correctness', () => {
       admin,
     )
 
-    await orderService.joinCampaign(campaign.id!, member.id!, 1, crypto.randomUUID(), 1)
-    await orderService.joinCampaign(campaign.id!, member2.id!, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1)
+    await orderService.joinCampaign(campaign.id!, member2.id!, member2, 1, crypto.randomUUID(), 1)
 
     await db.campaigns.update(campaign.id!, { cutoffAt: Date.now() - 1000 })
     await campaignService.checkAndCloseExpired()
@@ -384,6 +384,87 @@ describe('Fix 6: notification correctness', () => {
       .equals('ORDER_CONFIRMED')
       .toArray()
     expect(notifications).toHaveLength(0)
+  })
+})
+
+describe('courseService.openCourse RBAC', () => {
+  it('instructor can open a course', async () => {
+    const instructor = await getUser('instructor')
+    const course = await courseService.createCourse(
+      {
+        title: 'RBAC Open Test',
+        description: 'Instructor opens',
+        instructorId: instructor.id!,
+        startDateTime: '2026-12-10T09:00',
+        endDateTime: '2026-12-10T17:00',
+        capacity: 5,
+        prerequisiteCourseIds: [],
+      },
+      instructor,
+    )
+    await expect(
+      courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 }),
+    ).resolves.not.toThrow()
+  })
+
+  it('administrator can open a course', async () => {
+    const admin = await getUser('admin')
+    const instructor = await getUser('instructor')
+    const course = await courseService.createCourse(
+      {
+        title: 'Admin Open Test',
+        description: 'Admin opens',
+        instructorId: instructor.id!,
+        startDateTime: '2026-12-11T09:00',
+        endDateTime: '2026-12-11T17:00',
+        capacity: 5,
+        prerequisiteCourseIds: [],
+      },
+      instructor,
+    )
+    await expect(
+      courseService.openCourse(course.id!, admin, { expectedCourseVersion: 1 }),
+    ).resolves.not.toThrow()
+  })
+
+  it('member cannot open a course', async () => {
+    const instructor = await getUser('instructor')
+    const member = await getUser('member')
+    const course = await courseService.createCourse(
+      {
+        title: 'Member Open Block',
+        description: 'Member should not open',
+        instructorId: instructor.id!,
+        startDateTime: '2026-12-12T09:00',
+        endDateTime: '2026-12-12T17:00',
+        capacity: 5,
+        prerequisiteCourseIds: [],
+      },
+      instructor,
+    )
+    await expect(
+      courseService.openCourse(course.id!, member, { expectedCourseVersion: 1 }),
+    ).rejects.toThrow('Only Administrator or Instructor can open a course.')
+  })
+
+  it('dispatcher cannot open a course', async () => {
+    const instructor = await getUser('instructor')
+    const dispatcher = await getUser('dispatcher')
+    const course = await courseService.createCourse(
+      {
+        title: 'Dispatcher Open Block',
+        description: 'Dispatcher should not open',
+        instructorId: instructor.id!,
+        startDateTime: '2026-12-13T09:00',
+        endDateTime: '2026-12-13T17:00',
+        capacity: 5,
+        prerequisiteCourseIds: [],
+      },
+      instructor,
+    )
+    await expect(
+      courseService.openCourse(course.id!, dispatcher, { expectedCourseVersion: 1 }),
+    ).rejects.toThrow('Only Administrator or Instructor can open a course.')
   })
 })
 
@@ -402,5 +483,99 @@ describe('Fix 7: finance session/encryption', () => {
     // The restore only returns User, not the encryption key
     // The useAuth hook sets user but NOT encryptionKey on restore
     // This is the correct behavior - finance should require re-login
+  })
+})
+
+describe('RBAC: enroll and joinCampaign ownership enforcement', () => {
+  it('member can enroll themselves', async () => {
+    const instructor = await getUser('instructor')
+    const member = await getUser('member')
+    const course = await courseService.createCourse(
+      {
+        title: 'Self Enroll Test',
+        description: '',
+        instructorId: instructor.id!,
+        startDateTime: '2027-01-10T09:00',
+        endDateTime: '2027-01-10T17:00',
+        capacity: 5,
+        prerequisiteCourseIds: [],
+      },
+      instructor,
+    )
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
+    await expect(
+      courseService.enroll(course.id!, member.id!, member, crypto.randomUUID(), { expectedCourseVersion: 2 }),
+    ).resolves.toMatchObject({ status: 'Enrolled' })
+  })
+
+  it('user cannot enroll another member', async () => {
+    const instructor = await getUser('instructor')
+    const member = await getUser('member')
+    const member2 = await ensureMember('rbac-enroll-other')
+    const course = await courseService.createCourse(
+      {
+        title: 'Enroll Other Block',
+        description: '',
+        instructorId: instructor.id!,
+        startDateTime: '2027-01-11T09:00',
+        endDateTime: '2027-01-11T17:00',
+        capacity: 5,
+        prerequisiteCourseIds: [],
+      },
+      instructor,
+    )
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
+    await expect(
+      courseService.enroll(course.id!, member.id!, member2, crypto.randomUUID(), { expectedCourseVersion: 2 }),
+    ).rejects.toThrow('You can only enroll yourself unless you are an Administrator.')
+  })
+
+  it('administrator can enroll any member', async () => {
+    const admin = await getUser('admin')
+    const instructor = await getUser('instructor')
+    const member = await getUser('member')
+    const course = await courseService.createCourse(
+      {
+        title: 'Admin Enroll Test',
+        description: '',
+        instructorId: instructor.id!,
+        startDateTime: '2027-01-12T09:00',
+        endDateTime: '2027-01-12T17:00',
+        capacity: 5,
+        prerequisiteCourseIds: [],
+      },
+      instructor,
+    )
+    await courseService.openCourse(course.id!, instructor, { expectedCourseVersion: 1 })
+    await expect(
+      courseService.enroll(course.id!, member.id!, admin, crypto.randomUUID(), { expectedCourseVersion: 2 }),
+    ).resolves.toMatchObject({ status: 'Enrolled' })
+  })
+
+  it('member can join a campaign for themselves', async () => {
+    const admin = await getUser('admin')
+    const member = await getUser('member')
+    const fish = await createPublishedFish()
+    const campaign = await campaignService.createCampaign(
+      { title: 'Self Join', description: '', fishEntryId: fish.id!, pricePerUnit: 10, unit: 'lb', minParticipants: 1, cutoffAt: Date.now() + 60_000 },
+      admin,
+    )
+    await expect(
+      orderService.joinCampaign(campaign.id!, member.id!, member, 1, crypto.randomUUID(), 1),
+    ).resolves.toBeDefined()
+  })
+
+  it('user cannot join a campaign on behalf of another member', async () => {
+    const admin = await getUser('admin')
+    const member = await getUser('member')
+    const member2 = await ensureMember('rbac-join-other')
+    const fish = await createPublishedFish()
+    const campaign = await campaignService.createCampaign(
+      { title: 'Join Other Block', description: '', fishEntryId: fish.id!, pricePerUnit: 10, unit: 'lb', minParticipants: 1, cutoffAt: Date.now() + 60_000 },
+      admin,
+    )
+    await expect(
+      orderService.joinCampaign(campaign.id!, member.id!, member2, 1, crypto.randomUUID(), 1),
+    ).rejects.toMatchObject({ code: 'ORDER_RBAC_DENIED' })
   })
 })

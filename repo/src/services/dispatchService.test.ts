@@ -257,4 +257,16 @@ describe('dispatchService', () => {
     expect(conflicts.some((item) => item.type === 'CAPACITY_EXCEEDED')).toBe(true)
     expect(conflicts.some((item) => item.type === 'DUPLICATE_ADDRESS')).toBe(true)
   })
+
+  it('generateTasksFromOrders allows Dispatcher role', async () => {
+    const dispatcher = await getUser('dispatcher')
+    await expect(dispatchService.generateTasksFromOrders(dispatcher)).resolves.toBe(0)
+  })
+
+  it('generateTasksFromOrders blocks non-dispatcher/non-admin roles', async () => {
+    const member = await getUser('member')
+    await expect(dispatchService.generateTasksFromOrders(member)).rejects.toMatchObject({
+      code: 'DISPATCH_ROLE_FORBIDDEN',
+    })
+  })
 })

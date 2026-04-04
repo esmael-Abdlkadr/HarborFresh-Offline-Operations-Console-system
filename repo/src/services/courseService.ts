@@ -178,6 +178,9 @@ export const courseService = {
   },
 
   async openCourse(courseId: number, actor: User, options: EnrollOptions): Promise<void> {
+    if (actor.role !== 'Administrator' && actor.role !== 'Instructor') {
+      throw new Error('Only Administrator or Instructor can open a course.')
+    }
     await db.transaction('rw', db.courses, db.auditLogs, async () => {
       const course = await db.courses.get(courseId)
       if (!course) {
@@ -200,9 +203,14 @@ export const courseService = {
   async enroll(
     courseId: number,
     memberId: number,
+    actor: User,
     operationId: string,
     options: EnrollOptions,
   ): Promise<Enrollment> {
+    if (actor.role !== 'Administrator' && actor.id !== memberId) {
+      throw new Error('You can only enroll yourself unless you are an Administrator.')
+    }
+
     // Fast idempotency check outside the transaction first
     const existing = await db.enrollments.where('operationId').equals(operationId).first()
     if (existing) {
@@ -360,6 +368,9 @@ export const courseService = {
       if (!enrollment) {
         throw new EnrollmentError('ENROLL_NOT_FOUND', 'Enrollment not found.')
       }
+      if (actor.role !== 'Administrator' && actor.id !== enrollment.memberId) {
+        throw new EnrollmentError('ENROLL_INVALID_STATE', 'You can only drop your own enrollment unless you are an Administrator.')
+      }
       if (!(enrollment.status === 'Enrolled' || enrollment.status === 'Waitlisted')) {
         throw new EnrollmentError('ENROLL_INVALID_STATE', 'Enrollment cannot be dropped.')
       }
@@ -493,5 +504,17 @@ export const courseService = {
     )
 
     return updated
+  },
+
+  async getEnrollments(courseId: number, actor: { id?: number; role: User['role'] }): Promise<Enrollment[]> {
+    if (actor.role === 'Administrator' || actor.role === 'Instructor') {
+      return db.enrollments.where('courseId').equals(courseId).toArray()
+    }
+    if (!actor.id) return []
+    return db.enrollments
+      .where('courseId')
+      .equals(courseId)
+      .and((item) => item.memberId === actor.id)
+      .toArray()
   },
 }

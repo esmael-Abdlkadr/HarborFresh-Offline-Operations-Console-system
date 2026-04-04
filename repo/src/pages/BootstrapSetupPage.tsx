@@ -33,7 +33,7 @@ export default function BootstrapSetupPage() {
 
     setBusy(true)
     try {
-      await userService.resetPassword(currentUser.id, newPassword, currentUser.username)
+      await userService.resetPassword(currentUser.id, newPassword, currentUser)
       sessionStorage.removeItem('hf_bootstrap_pw')
       // Full reload so AuthProvider re-runs restoreSession() and picks up
       // mustChangePassword: false from IndexedDB. A SPA navigate() would keep

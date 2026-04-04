@@ -31,14 +31,12 @@ export default function AdminPage() {
   const [notesError, setNotesError] = useState<string | null>(null)
   const [notesBusy, setNotesBusy] = useState(false)
 
-  const actor = currentUser?.username ?? 'system'
-
   async function onCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
     setBusy(true)
     try {
-      await userService.createUser(username.trim(), password, role, actor)
+      await userService.createUser(username.trim(), password, role, currentUser!)
       setUsername('')
       setRole('Member')
       setPassword('')
@@ -58,7 +56,7 @@ export default function AdminPage() {
     if (!newPassword) return
     setError(null)
     try {
-      await userService.resetPassword(userId, newPassword, actor)
+      await userService.resetPassword(userId, newPassword, currentUser!)
     } catch (resetError) {
       if (resetError instanceof UserServiceError) {
         setError(resetError.message)
@@ -71,7 +69,7 @@ export default function AdminPage() {
   async function unlockAccount(userId: number) {
     setError(null)
     try {
-      await userService.unlockAccount(userId, actor)
+      await userService.unlockAccount(userId, currentUser!)
     } catch (unlockError) {
       setError(unlockError instanceof Error ? unlockError.message : 'Unlock failed.')
     }

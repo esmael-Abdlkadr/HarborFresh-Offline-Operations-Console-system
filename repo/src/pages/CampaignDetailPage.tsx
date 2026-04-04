@@ -5,6 +5,7 @@ import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { CheckoutDrawer } from '../components/CheckoutDrawer.tsx'
 import { orderService } from '../services/orderService.ts'
+import { userService } from '../services/userService.ts'
 import type { Order } from '../types/index.ts'
 
 function Progress({ current, min }: { current: number; min: number }) {
@@ -37,32 +38,34 @@ export default function CampaignDetailPage() {
     },
     [campaign?.fishEntryId],
   )
-  const orders =
-    useLiveQuery<Order[]>(
-      async () => {
-        if (!Number.isFinite(campaignId)) {
-          return []
-        }
-        return db.orders.where('campaignId').equals(campaignId).toArray()
-      },
-      [campaignId],
-    ) ?? []
-  const usersRaw = useLiveQuery(() => db.users.toArray(), [])
+
+  // Scoped query: non-admin members fetch only their own orders
+  const ordersRaw = useLiveQuery(
+    () => {
+      if (!Number.isFinite(campaignId) || !currentUser) return undefined
+      return orderService.getCampaignOrders(campaignId, currentUser)
+    },
+    [campaignId, currentUser?.id, currentUser?.role],
+  )
+  const orders = useMemo(() => ordersRaw ?? [], [ordersRaw])
+
+  // Admin-only: resolve member usernames for the orders table.
+  // Uses targeted ID lookup instead of fetching the entire users table.
+  const isAdmin = currentUser?.role === 'Administrator'
+  const adminUserMap = useLiveQuery(
+    async () => {
+      if (!isAdmin || orders.length === 0) return new Map<number, string>()
+      const ids = [...new Set(orders.map((o) => o.memberId))]
+      return userService.getUsernames(ids)
+    },
+    [orders, isAdmin],
+  )
 
   const [tab, setTab] = useState<'orders' | 'mine'>('mine')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<Order['paymentMethod']>('Cash')
-
-  const userMap = useMemo(() => {
-    const users = usersRaw ?? []
-    const map = new Map<number, string>()
-    for (const user of users) {
-      if (user.id) map.set(user.id, user.username)
-    }
-    return map
-  }, [usersRaw])
 
   const myOrder = orders.find((order) => order.memberId === currentUser?.id)
   const participants = orders.filter((order) => order.status !== 'Cancelled').length
@@ -159,7 +162,7 @@ export default function CampaignDetailPage() {
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '0.5rem' }}>{userMap.get(order.memberId) ?? `User ${order.memberId}`}</td>
+                    <td style={{ padding: '0.5rem' }}>{adminUserMap?.get(order.memberId) ?? `User ${order.memberId}`}</td>
                     <td style={{ padding: '0.5rem' }}>{order.quantity}</td>
                     <td style={{ padding: '0.5rem' }}>${order.totalPrice.toFixed(2)}</td>
                     <td style={{ padding: '0.5rem' }}>{order.status}</td>
@@ -261,11 +264,11 @@ export default function CampaignDetailPage() {
         </div>
       )}
 
-      {drawerOpen && currentUser?.id && (
+      {drawerOpen && currentUser && (
         <CheckoutDrawer
           open={drawerOpen}
           campaign={campaign}
-          memberId={currentUser.id}
+          actor={currentUser}
           onClose={() => setDrawerOpen(false)}
           onSuccess={() => {
             setError(null)
