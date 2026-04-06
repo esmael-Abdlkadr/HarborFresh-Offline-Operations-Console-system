@@ -130,7 +130,23 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([strictArrayBuffer(bytes)], { type: mime })
 }
 
+function assertFinanceRole(actor: { role: User['role'] }) {
+  if (actor.role !== 'FinanceClerk' && actor.role !== 'Administrator') {
+    throw new FinanceError('FINANCE_ROLE_FORBIDDEN', 'Only FinanceClerk or Administrator can access finance data.')
+  }
+}
+
 export const financeService = {
+  async listLedgerEntries(actor: { role: User['role'] }): Promise<LedgerEntry[]> {
+    assertFinanceRole(actor)
+    return db.ledgerEntries.orderBy('createdAt').reverse().toArray()
+  },
+
+  async listAttachments(actor: { role: User['role'] }): Promise<Attachment[]> {
+    assertFinanceRole(actor)
+    return db.attachments.toArray()
+  },
+
   async computeHash(payee: string, amount: number, date: string, memo: string): Promise<string> {
     const raw = `${payee}|${amount.toFixed(2)}|${date}|${memo}`
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
@@ -306,7 +322,8 @@ export const financeService = {
     await addAudit(actor, 'OCR_TEXT_REVIEWED', entryId)
   },
 
-  async getDecryptedEntry(entryId: number, key: CryptoKey): Promise<LedgerEntry | null> {
+  async getDecryptedEntry(entryId: number, key: CryptoKey, actor: { role: User['role'] }): Promise<LedgerEntry | null> {
+    assertFinanceRole(actor)
     const entry = await db.ledgerEntries.get(entryId)
     if (!entry) return null
     const secure = await this.decryptSensitiveFields(entry, key)

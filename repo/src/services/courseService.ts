@@ -97,6 +97,12 @@ function assertVersion(current: number, expected: number) {
   }
 }
 
+function assertAuthenticated(actor: { role: User['role'] }) {
+  if (!actor?.role) {
+    throw new Error('RBAC_AUTH_REQUIRED')
+  }
+}
+
 async function promoteWaitlistInternal(course: Course): Promise<WaitlistPromotionNotification | null> {
   if (!course.id) {
     return null
@@ -150,6 +156,16 @@ async function promoteWaitlistInternal(course: Course): Promise<WaitlistPromotio
 }
 
 export const courseService = {
+  async listCourses(actor: { role: User['role'] }): Promise<Course[]> {
+    assertAuthenticated(actor)
+    return db.courses.toArray()
+  },
+
+  async getCourse(id: number, actor: { role: User['role'] }): Promise<Course | undefined> {
+    assertAuthenticated(actor)
+    return db.courses.get(id)
+  },
+
   async createCourse(data: CreateCourseInput, actor: User): Promise<Course> {
     if (!(actor.role === 'Instructor' || actor.role === 'Administrator')) {
       throw new Error('Only instructors or administrators can create courses.')
@@ -504,6 +520,26 @@ export const courseService = {
     )
 
     return updated
+  },
+
+  async getEnrolledCounts(actor: { role: User['role'] }): Promise<Map<number, number>> {
+    assertAuthenticated(actor)
+    const enrolled = await db.enrollments.where('status').equals('Enrolled').toArray()
+    const map = new Map<number, number>()
+    for (const e of enrolled) {
+      map.set(e.courseId, (map.get(e.courseId) ?? 0) + 1)
+    }
+    return map
+  },
+
+  async getMyEnrollmentStatuses(memberId: number, actor: { role: User['role'] }): Promise<Map<number, string>> {
+    assertAuthenticated(actor)
+    const mine = await db.enrollments.where('memberId').equals(memberId).toArray()
+    const map = new Map<number, string>()
+    for (const e of mine) {
+      map.set(e.courseId, e.status)
+    }
+    return map
   },
 
   async getEnrollments(courseId: number, actor: { id?: number; role: User['role'] }): Promise<Enrollment[]> {

@@ -1,9 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { fishService } from '../services/fishService.ts'
+import { userService } from '../services/userService.ts'
 import { Modal } from '../components/ui/Modal.tsx'
 import type { FishRevision, MediaAsset } from '../types/index.ts'
 
@@ -54,35 +54,32 @@ export default function FishDetailPage() {
   const fishId = Number(id)
   const { currentUser, hasRole } = useAuth()
   const isEditorial = hasRole(...EDITORIAL_ROLES)
-  const entry = useLiveQuery(() => (Number.isFinite(fishId) ? db.fishEntries.get(fishId) : undefined), [fishId])
-  const revisions = useLiveQuery<FishRevision[]>(
-    async () => {
-      if (!Number.isFinite(fishId)) {
-        return []
-      }
-      const list = await db.fishRevisions.where('fishId').equals(fishId).toArray()
-      return list.sort((a, b) => b.version - a.version)
-    },
-    [fishId],
-  ) ?? []
-  const usersRaw = useLiveQuery(() => db.users.toArray(), [])
+  const entry = useLiveQuery(
+    () => (Number.isFinite(fishId) && currentUser ? fishService.getEntry(fishId, currentUser) : undefined),
+    [fishId, currentUser?.role],
+  )
+  const revisionsRaw = useLiveQuery<FishRevision[]>(
+    () => (Number.isFinite(fishId) && currentUser ? fishService.getRevisions(fishId, currentUser) : Promise.resolve([])),
+    [fishId, currentUser?.role],
+  )
+  const revisions = useMemo(() => revisionsRaw ?? [], [revisionsRaw])
+  // Only editorial users see version history with author names.
+  // Fetch targeted usernames (no credential fields) only when needed.
+  const authorIds = useMemo(() => {
+    if (!isEditorial) return []
+    return [...new Set(revisions.map((r) => r.author))]
+  }, [isEditorial, revisions])
+  const userLookupRaw = useLiveQuery(
+    () => (authorIds.length > 0 ? userService.getUsernames(authorIds) : undefined),
+    [authorIds],
+  )
+  const userLookup = userLookupRaw ?? new Map<number, string>()
 
   const [activeTab, setActiveTab] = useState<TabKey>('info')
   const [workflowComment, setWorkflowComment] = useState('')
   const [scheduleInput, setScheduleInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null)
-
-  const userLookup = useMemo(() => {
-    const items = usersRaw ?? []
-    const map = new Map<number, string>()
-    for (const user of items) {
-      if (user.id) {
-        map.set(user.id, user.username)
-      }
-    }
-    return map
-  }, [usersRaw])
 
   const mediaPreviews = useMemo(() => {
     if (!entry) {

@@ -25,7 +25,14 @@ export function TaskCard({ task, conflict }: TaskCardProps) {
   } as const
 
   return (
-    <article ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <article
+      ref={setNodeRef}
+      style={style}
+      data-testid={`task-card-${task.id}`}
+      data-task-id={task.id}
+      {...attributes}
+      {...listeners}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '0.5rem' }}>
         <strong>Order #{task.orderId}</strong>
         {conflict && <span title="Conflict" style={{ color: '#be3130' }}>⚠</span>}

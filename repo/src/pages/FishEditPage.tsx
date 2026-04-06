@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { fishService } from '../services/fishService.ts'
 import type { FishEntry, MediaAsset } from '../types/index.ts'
@@ -42,11 +41,11 @@ export default function FishEditPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!isEditing) {
+    if (!isEditing || !currentUser) {
       return
     }
 
-    void db.fishEntries.get(editId).then((entry) => {
+    void fishService.getEntryForEdit(editId, currentUser).then((entry) => {
       if (!entry) {
         setError('Entry not found.')
         setLoading(false)
@@ -69,7 +68,7 @@ export default function FishEditPage() {
       setInitialSignature(JSON.stringify(next))
       setLoading(false)
     })
-  }, [editId, isEditing])
+  }, [currentUser, editId, isEditing])
 
   const hasUnsavedChanges = useMemo(() => {
     if (!initialSignature) {

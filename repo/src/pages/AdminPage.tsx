@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { userService, UserServiceError } from '../services/userService.ts'
 import { authService } from '../services/authService.ts'
@@ -17,8 +16,11 @@ const roles: UserRole[] = [
 ]
 
 export default function AdminPage() {
-  const users = useLiveQuery(() => db.users.orderBy('username').toArray(), []) ?? []
   const { currentUser, encryptionKey, hasRole } = useAuth()
+  const users = useLiveQuery(
+    () => (currentUser ? userService.listUsers(currentUser) : Promise.resolve([])),
+    [currentUser],
+  ) ?? []
 
   const [username, setUsername] = useState('')
   const [role, setRole] = useState<UserRole>('Member')

@@ -1,6 +1,6 @@
 import { db } from '../db/db.ts'
 import { notificationService } from './notificationService.ts'
-import type { FishEntry, User } from '../types/index.ts'
+import type { FishEntry, FishRevision, User } from '../types/index.ts'
 
 type FishUpdate = Partial<FishEntry>
 
@@ -177,7 +177,38 @@ async function saveRevisionInternal(
   return saved
 }
 
+const EDITORIAL_ROLES: ReadonlyArray<User['role']> = ['ContentEditor', 'ContentReviewer', 'Administrator']
+
 export const fishService = {
+  async getEntryForEdit(fishId: number, actor: User): Promise<FishEntry | null> {
+    assert(
+      actor.role === 'ContentEditor' || actor.role === 'Administrator',
+      'Only ContentEditor or Administrator can edit fish entries.',
+    )
+    const entry = await db.fishEntries.get(fishId)
+    return entry ?? null
+  },
+
+  async listEntries(actor: { role: User['role'] }): Promise<FishEntry[]> {
+    if (EDITORIAL_ROLES.includes(actor.role)) {
+      return db.fishEntries.toArray()
+    }
+    return db.fishEntries.where('status').equals('published').toArray()
+  },
+
+  async getEntry(fishId: number, actor: { role: User['role'] }): Promise<FishEntry | null> {
+    const entry = await db.fishEntries.get(fishId)
+    if (!entry) return null
+    if (!EDITORIAL_ROLES.includes(actor.role) && entry.status !== 'published') return null
+    return entry
+  },
+
+  async getRevisions(fishId: number, actor: { role: User['role'] }): Promise<FishRevision[]> {
+    if (!EDITORIAL_ROLES.includes(actor.role)) return []
+    const list = await db.fishRevisions.where('fishId').equals(fishId).toArray()
+    return list.sort((a, b) => b.version - a.version)
+  },
+
   async createEntry(data: Partial<FishEntry>, actor: User): Promise<FishEntry> {
     assert(
       actor.role === 'ContentEditor' || actor.role === 'Administrator',

@@ -16,6 +16,12 @@ function roundUsd(value: number): number {
   return Number(value.toFixed(2))
 }
 
+function assertAuthenticated(actor: { role: User['role'] }) {
+  if (!actor?.role) {
+    throw new Error('RBAC_AUTH_REQUIRED')
+  }
+}
+
 async function addAudit(actor: string, action: string, campaignId: number) {
   await db.auditLogs.add({
     actor,
@@ -27,6 +33,24 @@ async function addAudit(actor: string, action: string, campaignId: number) {
 }
 
 export const campaignService = {
+  async listCampaigns(actor: { role: User['role'] }): Promise<Campaign[]> {
+    assertAuthenticated(actor)
+    return db.campaigns.toArray()
+  },
+
+  async getCampaign(id: number, actor: { role: User['role'] }): Promise<Campaign | undefined> {
+    assertAuthenticated(actor)
+    return db.campaigns.get(id)
+  },
+
+  async getPublishedFishEntries(actor: { role: User['role'] }): Promise<Array<{ id: number; commonName: string }>> {
+    assertAuthenticated(actor)
+    const entries = await db.fishEntries.where('status').equals('published').toArray()
+    return entries
+      .filter((e) => e.id !== undefined)
+      .map((e) => ({ id: e.id!, commonName: e.commonName }))
+  },
+
   async createCampaign(data: CampaignInput, actor: User): Promise<Campaign> {
     if (!(actor.role === 'Administrator' || actor.role === 'Member') || !actor.id) {
       throw new Error('Only administrators or members can create campaigns.')

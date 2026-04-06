@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db.ts'
+import { dashboardService } from '../services/dashboardService.ts'
 
 interface StatCardProps {
   label: string
@@ -26,12 +26,7 @@ function StatCard({ label, value }: StatCardProps) {
 }
 
 export default function DashboardPage() {
-  const openCampaigns = useLiveQuery(() => db.campaigns.where('status').equals('Open').count(), [])
-  const confirmedOrders = useLiveQuery(() => db.orders.where('status').equals('Confirmed').count(), [])
-  const unassignedTasks = useLiveQuery(() => db.deliveryTasks.where('status').equals('Unassigned').count(), [])
-  const pendingNotifications = useLiveQuery(() => db.notifications.where('status').equals('Pending').count(), [])
-  const publishedFish = useLiveQuery(() => db.fishEntries.where('status').equals('published').count(), [])
-  const openCourses = useLiveQuery(() => db.courses.where('status').equals('Open').count(), [])
+  const counts = useLiveQuery(() => dashboardService.getCounts(), [])
 
   return (
     <main className="page">
@@ -43,12 +38,12 @@ export default function DashboardPage() {
       </section>
 
       <section style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem' }}>
-        <StatCard label="Open Campaigns" value={openCampaigns} />
-        <StatCard label="Confirmed Orders" value={confirmedOrders} />
-        <StatCard label="Unassigned Tasks" value={unassignedTasks} />
-        <StatCard label="Pending Notifications" value={pendingNotifications} />
-        <StatCard label="Published Fish" value={publishedFish} />
-        <StatCard label="Open Courses" value={openCourses} />
+        <StatCard label="Open Campaigns" value={counts?.openCampaigns} />
+        <StatCard label="Confirmed Orders" value={counts?.confirmedOrders} />
+        <StatCard label="Unassigned Tasks" value={counts?.unassignedTasks} />
+        <StatCard label="Pending Notifications" value={counts?.pendingNotifications} />
+        <StatCard label="Published Fish" value={counts?.publishedFish} />
+        <StatCard label="Open Courses" value={counts?.openCourses} />
       </section>
     </main>
   )

@@ -2,8 +2,8 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
 import { campaignService } from '../services/campaignService.ts'
+import { orderService } from '../services/orderService.ts'
 import { useAuth } from '../hooks/useAuth.ts'
-import { db } from '../db/db.ts'
 
 type FilterTab = 'All' | 'Open' | 'Confirmed' | 'Closed'
 
@@ -24,11 +24,17 @@ function Countdown({ cutoffAt }: { cutoffAt: number }) {
 
 export default function CampaignListPage() {
   const { currentUser, hasRole } = useAuth()
-  const campaignsRaw = useLiveQuery(() => db.campaigns.toArray(), [])
-  const ordersRaw = useLiveQuery(() => db.orders.toArray(), [])
+  const campaignsRaw = useLiveQuery(
+    () => (currentUser ? campaignService.listCampaigns(currentUser) : undefined),
+    [currentUser?.role],
+  )
+  const participantCountsRaw = useLiveQuery(() => orderService.getParticipantCounts(), [])
   const campaigns = campaignsRaw ?? []
-  const orders = ordersRaw ?? []
-  const fishEntriesRaw = useLiveQuery(() => db.fishEntries.where('status').equals('published').toArray(), [])
+  const participantCounts = participantCountsRaw ?? new Map<number, number>()
+  const fishEntriesRaw = useLiveQuery(
+    () => (currentUser ? campaignService.getPublishedFishEntries(currentUser) : undefined),
+    [currentUser?.role],
+  )
 
   const [tab, setTab] = useState<FilterTab>('All')
   const [error, setError] = useState<string | null>(null)
@@ -185,9 +191,7 @@ export default function CampaignListPage() {
           </article>
         ) : (
           filtered.map((campaign) => {
-            const participantCount = orders.filter(
-              (order) => order.campaignId === campaign.id && order.status !== 'Cancelled',
-            ).length
+            const participantCount = campaign.id ? (participantCounts.get(campaign.id) ?? 0) : 0
             return (
               <article className="card" key={campaign.id}>
                 <h3 style={{ marginTop: 0 }}>{campaign.title}</h3>

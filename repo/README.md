@@ -14,7 +14,7 @@ HarborFresh is a fully offline single-page operations console for a seafood co-o
 | dnd-kit | 6.x / 10.x | Dispatch board drag-and-drop |
 | Vitest | 3.2.x | Unit/component test runner |
 | Testing Library | 16.x | React component tests |
-| Playwright | 1.52.x | E2E smoke tests |
+| Playwright | 1.59.x | E2E smoke tests |
 
 ## Start the App (Local)
 
@@ -58,7 +58,7 @@ Use this path for CI or when you need a reproducible, isolated test environment 
 |---|---|---|
 | 1 | TypeScript check · production build · Vitest · ESLint | `node:22-alpine` |
 | 2 | App starts for E2E | `nginx:1.27-alpine` |
-| 3 | Playwright chromium E2E | `mcr.microsoft.com/playwright:v1.52.0-noble` |
+| 3 | Playwright chromium E2E | `mcr.microsoft.com/playwright:v1.59.0-noble` |
 
 ## Run Tests Locally — day-to-day development
 

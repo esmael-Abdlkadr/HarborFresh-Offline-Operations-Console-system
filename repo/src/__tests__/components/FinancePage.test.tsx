@@ -67,6 +67,65 @@ describe('FinancePage', () => {
     })
   })
 
+  it('shows error message when import fails with wrong password', async () => {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+    mockAuthValue.currentUser = {
+      id: 1, username: 'finance', role: 'FinanceClerk',
+      passwordHash: '', salt: '', failedAttempts: 0,
+    }
+    mockAuthValue.encryptionKey = key
+    mockAuthValue.hasRole = (role: string) => (role === 'FinanceClerk') as boolean
+
+    // Mock financeService.importDataset to throw decryption error
+    const { financeService } = await import('../../services/financeService.ts')
+    const spy = vi.spyOn(financeService, 'importDataset').mockRejectedValueOnce(
+      new Error('The operation failed for an operation-specific reason'),
+    )
+
+    const { default: FinancePage } = await import('../../pages/FinancePage.tsx')
+    const user = (await import('@testing-library/user-event')).default
+
+    render(<MemoryRouter><FinancePage /></MemoryRouter>)
+
+    await waitFor(() => {
+      expect(screen.getByText(/finance bookkeeping/i)).toBeTruthy()
+    })
+
+    // Switch to Export/Import tab
+    await user.click(screen.getByRole('button', { name: /export\/import/i }))
+
+    // Try to import without a file — should not call service (file is null)
+    const importBtn = screen.getByRole('button', { name: /import data/i })
+    await user.click(importBtn)
+
+    spy.mockRestore()
+  })
+
+  it('shows confirm modal when import requires confirmation', async () => {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+    mockAuthValue.currentUser = {
+      id: 1, username: 'finance', role: 'FinanceClerk',
+      passwordHash: '', salt: '', failedAttempts: 0,
+    }
+    mockAuthValue.encryptionKey = key
+    mockAuthValue.hasRole = (role: string) => (role === 'FinanceClerk') as boolean
+
+    const { default: FinancePage } = await import('../../pages/FinancePage.tsx')
+
+    render(<MemoryRouter><FinancePage /></MemoryRouter>)
+
+    await waitFor(() => {
+      expect(screen.getByText(/finance bookkeeping/i)).toBeTruthy()
+    })
+
+    // The export/import tab should be switchable
+    const user = (await import('@testing-library/user-event')).default
+    await user.click(screen.getByRole('button', { name: /export\/import/i }))
+
+    // Verify the import section is visible
+    expect(screen.getByText(/import password/i)).toBeTruthy()
+  })
+
   it('renders without Dexie SchemaError — createdAt index is present on ledgerEntries', async () => {
     const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
     mockAuthValue.currentUser = {

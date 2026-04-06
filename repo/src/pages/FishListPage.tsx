@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
+import { fishService } from '../services/fishService.ts'
 import type { FishEntry } from '../types/index.ts'
 
 const statusColors: Record<FishEntry['status'], string> = {
@@ -26,12 +26,12 @@ const EDITORIAL_ROLES = ['ContentEditor', 'ContentReviewer', 'Administrator'] as
 
 export default function FishListPage() {
   const navigate = useNavigate()
-  const { hasRole } = useAuth()
+  const { currentUser, hasRole } = useAuth()
   const isEditorial = hasRole(...EDITORIAL_ROLES)
 
   const entriesRaw = useLiveQuery(
-    () => (isEditorial ? db.fishEntries.toArray() : db.fishEntries.where('status').equals('published').toArray()),
-    [isEditorial],
+    () => (currentUser ? fishService.listEntries(currentUser) : undefined),
+    [currentUser?.role],
   )
   const entries = useMemo(() => entriesRaw ?? [], [entriesRaw])
   const [statusFilter, setStatusFilter] = useState<'all' | FishEntry['status']>('all')

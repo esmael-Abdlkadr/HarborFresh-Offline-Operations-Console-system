@@ -1,15 +1,27 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { courseService } from '../services/courseService.ts'
+import { userService } from '../services/userService.ts'
 
 export default function CourseListPage() {
   const { currentUser, hasRole } = useAuth()
-  const coursesRaw = useLiveQuery(() => db.courses.toArray(), [])
-  const users = useLiveQuery(() => db.users.toArray(), []) ?? []
-  const enrollments = useLiveQuery(() => db.enrollments.toArray(), []) ?? []
+  const coursesRaw = useLiveQuery(
+    () => (currentUser ? courseService.listCourses(currentUser) : undefined),
+    [currentUser?.role],
+  )
+  const instructors = useLiveQuery(() => userService.getInstructorList(), []) ?? []
+  const enrolledCountsRaw = useLiveQuery(
+    () => (currentUser ? courseService.getEnrolledCounts(currentUser) : undefined),
+    [currentUser?.role],
+  )
+  const enrolledCounts = enrolledCountsRaw ?? new Map<number, number>()
+  const myStatusesRaw = useLiveQuery(
+    () => (currentUser?.id ? courseService.getMyEnrollmentStatuses(currentUser.id, currentUser) : undefined),
+    [currentUser?.id, currentUser?.role],
+  )
+  const myStatuses = myStatusesRaw ?? new Map<number, string>()
 
   const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Open' | 'Full' | 'Closed' | 'Completed'>('All')
   const [instructorFilter, setInstructorFilter] = useState<number>(0)
@@ -137,13 +149,11 @@ export default function CourseListPage() {
           </select>
           <select value={instructorFilter} onChange={(event) => setInstructorFilter(Number(event.target.value))}>
             <option value={0}>All instructors</option>
-            {users
-              .filter((user) => (user.role === 'Instructor' || user.role === 'Administrator') && user.id)
-              .map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.username}
-                </option>
-              ))}
+            {instructors.map((inst) => (
+              <option key={inst.id} value={inst.id}>
+                {inst.username}
+              </option>
+            ))}
           </select>
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
@@ -160,8 +170,8 @@ export default function CourseListPage() {
               Instructor
               <select value={form.instructorId} onChange={(e) => setForm((s) => ({ ...s, instructorId: Number(e.target.value) }))} required>
                 <option value={0}>Select instructor</option>
-                {users.filter((u) => (u.role === 'Instructor' || u.role === 'Administrator') && u.id).map((u) => (
-                  <option key={u.id} value={u.id}>{u.username}</option>
+                {instructors.map((inst) => (
+                  <option key={inst.id} value={inst.id}>{inst.username}</option>
                 ))}
               </select>
             </label>
@@ -204,16 +214,16 @@ export default function CourseListPage() {
               </tr>
             ) : null}
             {filtered.map((course) => {
-              const enrolledCount = enrollments.filter((item) => item.courseId === course.id && item.status === 'Enrolled').length
-              const myEnrollment = enrollments.find((item) => item.courseId === course.id && item.memberId === currentUser?.id)
+              const enrolledCount = course.id ? (enrolledCounts.get(course.id) ?? 0) : 0
+              const myStatus = course.id ? myStatuses.get(course.id) : undefined
               return (
                 <tr key={course.id} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '0.5rem' }}>{course.title}</td>
-                  <td style={{ padding: '0.5rem' }}>{users.find((u) => u.id === course.instructorId)?.username ?? `User ${course.instructorId}`}</td>
+                  <td style={{ padding: '0.5rem' }}>{instructors.find((i) => i.id === course.instructorId)?.username ?? `User ${course.instructorId}`}</td>
                   <td style={{ padding: '0.5rem' }}>{formatDateTimeDisplay(course.startDateTime)} – {formatDateTimeDisplay(course.endDateTime)}</td>
                   <td style={{ padding: '0.5rem' }}>{course.status}</td>
                   <td style={{ padding: '0.5rem' }}>{enrolledCount}/{course.capacity}</td>
-                  <td style={{ padding: '0.5rem' }}>{myEnrollment?.status ?? '-'}</td>
+                  <td style={{ padding: '0.5rem' }}>{myStatus ?? '-'}</td>
                   <td style={{ padding: '0.5rem', display: 'flex', gap: '0.4rem' }}>
                     {hasRole('Member') && (course.status === 'Open' || course.status === 'Full') && (
                       <button className="btn secondary" onClick={() => void enroll(course.id!)}>Enroll</button>

@@ -1,7 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { courseService, EnrollmentError } from '../services/courseService.ts'
 import { userService } from '../services/userService.ts'
@@ -11,7 +10,10 @@ export default function CourseDetailPage() {
   const { id } = useParams()
   const courseId = Number(id)
   const { currentUser, hasRole } = useAuth()
-  const course = useLiveQuery(() => (Number.isFinite(courseId) ? db.courses.get(courseId) : undefined), [courseId])
+  const course = useLiveQuery(
+    () => (Number.isFinite(courseId) && currentUser ? courseService.getCourse(courseId, currentUser) : undefined),
+    [courseId, currentUser?.role],
+  )
 
   // Scoped query: members fetch only their own enrollment; admin/instructor see all
   const enrollmentsRaw = useLiveQuery(

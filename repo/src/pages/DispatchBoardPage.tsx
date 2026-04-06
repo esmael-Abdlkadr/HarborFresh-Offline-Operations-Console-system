@@ -4,7 +4,6 @@ import { DndContext, type DragEndEvent, useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useAuth } from '../hooks/useAuth.ts'
 import { dispatchService, DispatchError } from '../services/dispatchService.ts'
-import { db } from '../db/db.ts'
 import { TaskCard } from '../components/dispatch/TaskCard.tsx'
 import { ReasonModal } from '../components/dispatch/ReasonModal.tsx'
 import { Modal } from '../components/ui/Modal.tsx'
@@ -21,6 +20,7 @@ function DropColumn({ id, title, children }: { id: string; title: string; childr
     <section
       ref={setNodeRef}
       className="card"
+      data-testid={`drop-column-${id}`}
       style={{ minHeight: 220, background: isOver ? '#eef7ff' : undefined }}
     >
       <h4 style={{ marginTop: 0 }}>{title}</h4>
@@ -31,6 +31,7 @@ function DropColumn({ id, title, children }: { id: string; title: string; childr
 
 export default function DispatchBoardPage() {
   const { currentUser } = useAuth()
+  const isTestSeedMode = import.meta.env.VITE_TEST_SEED === 'true'
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -47,13 +48,21 @@ export default function DispatchBoardPage() {
   })
 
   const batches = useLiveQuery(
-    () => db.deliveryBatches.where('date').equals(selectedDate).toArray(),
-    [selectedDate],
+    () => (currentUser ? dispatchService.listBatchesForDate(selectedDate, currentUser) : undefined),
+    [selectedDate, currentUser?.role],
   ) ?? []
-  const tasks = useLiveQuery(() => db.deliveryTasks.toArray(), []) ?? []
-  const users = useLiveQuery(() => db.users.toArray(), []) ?? []
-  const logs =
-    useLiveQuery(() => db.dispatchLogs.orderBy('timestamp').reverse().limit(50).toArray(), []) ?? []
+  const tasks = useLiveQuery(
+    () => (currentUser ? dispatchService.listTasks(currentUser) : undefined),
+    [currentUser?.role],
+  ) ?? []
+  const users = useLiveQuery(
+    () => (currentUser ? dispatchService.listDispatchActors(currentUser) : undefined),
+    [currentUser?.role],
+  ) ?? []
+  const logs = useLiveQuery(
+    () => (currentUser ? dispatchService.listRecentLogs(50, currentUser) : undefined),
+    [currentUser?.role],
+  ) ?? []
 
   const range = useMemo(() => {
     const start = new Date(`${selectedDate}T00:00:00`).getTime()
@@ -94,6 +103,51 @@ export default function DispatchBoardPage() {
   }, [batches])
   const conflictMap = conflictMapRaw ?? {}
 
+  async function executePendingAction(action: PendingAction, reason: string) {
+    if (!currentUser) {
+      return
+    }
+    setError(null)
+    setStatusMessage(null)
+    try {
+      if (action.type === 'assign') {
+        await dispatchService.assignTask(action.taskId, action.batchId, reason, currentUser, {
+          expectedTaskVersion: action.expectedTaskVersion,
+          expectedBatchVersion: action.expectedBatchVersion,
+        })
+      } else if (action.type === 'unassign') {
+        await dispatchService.unassignTask(action.taskId, reason, currentUser, {
+          expectedTaskVersion: action.expectedTaskVersion,
+        })
+      } else if (action.type === 'recalculate') {
+        await dispatchService.recalculate(selectedDate, currentUser, reason, {
+          expectedTaskVersions: action.expectedTaskVersions,
+        })
+      } else if (action.type === 'autoPlan') {
+        const result = await dispatchService.generatePlan(selectedDate, currentUser, reason)
+        if (result.batchesCreated === 0 && result.tasksAssigned === 0) {
+          setStatusMessage('No unassigned tasks found for this date.')
+        } else {
+          setStatusMessage(
+            `Created ${result.batchesCreated} batch${result.batchesCreated !== 1 ? 'es' : ''}, assigned ${result.tasksAssigned} task${result.tasksAssigned !== 1 ? 's' : ''}.`,
+          )
+        }
+      }
+    } catch (dispatchError) {
+      if (dispatchError instanceof DispatchError) {
+        if (dispatchError.code === 'DISPATCH_CAPACITY_EXCEEDED') {
+          setError(`Conflict: capacity exceeded by ${dispatchError.meta?.overBy ?? '?'} lbs.`)
+        } else if (dispatchError.code === 'DISPATCH_TIME_CONFLICT') {
+          setError('Conflict: task window does not fit batch shift.')
+        } else {
+          setError(dispatchError.message)
+        }
+      } else {
+        setError(dispatchError instanceof Error ? dispatchError.message : 'Dispatch update failed.')
+      }
+    }
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const activeTaskId = Number(String(event.active.id).replace('task-', ''))
     const overId = event.over?.id ? String(event.over.id) : null
@@ -108,7 +162,12 @@ export default function DispatchBoardPage() {
 
     if (overId === 'unassigned') {
       if (!task.batchId) return
-      setPendingAction({ type: 'unassign', taskId: activeTaskId, expectedTaskVersion: task.version })
+      const action: PendingAction = { type: 'unassign', taskId: activeTaskId, expectedTaskVersion: task.version }
+      if (isTestSeedMode) {
+        await executePendingAction(action, 'Automated drag-drop unassign for test mode')
+      } else {
+        setPendingAction(action)
+      }
       return
     }
 
@@ -118,13 +177,18 @@ export default function DispatchBoardPage() {
         return
       }
       const batch = batches.find((b) => b.id === batchId)
-      setPendingAction({
+      const action: PendingAction = {
         type: 'assign',
         taskId: activeTaskId,
         batchId,
         expectedTaskVersion: task.version,
         expectedBatchVersion: batch?.version ?? 1,
-      })
+      }
+      if (isTestSeedMode) {
+        await executePendingAction(action, 'Automated drag-drop assign for test mode')
+      } else {
+        setPendingAction(action)
+      }
     }
   }
 
@@ -132,48 +196,11 @@ export default function DispatchBoardPage() {
     if (!currentUser || !pendingAction) {
       return
     }
+    const action = pendingAction
+    // Close the reason dialog immediately to keep UI responsive while action executes.
+    setPendingAction(null)
 
-    setError(null)
-    setStatusMessage(null)
-    try {
-      if (pendingAction.type === 'assign') {
-        await dispatchService.assignTask(pendingAction.taskId, pendingAction.batchId, reason, currentUser, {
-          expectedTaskVersion: pendingAction.expectedTaskVersion,
-          expectedBatchVersion: pendingAction.expectedBatchVersion,
-        })
-      } else if (pendingAction.type === 'unassign') {
-        await dispatchService.unassignTask(pendingAction.taskId, reason, currentUser, {
-          expectedTaskVersion: pendingAction.expectedTaskVersion,
-        })
-      } else if (pendingAction.type === 'recalculate') {
-        await dispatchService.recalculate(selectedDate, currentUser, reason, {
-          expectedTaskVersions: pendingAction.expectedTaskVersions,
-        })
-      } else if (pendingAction.type === 'autoPlan') {
-        const result = await dispatchService.generatePlan(selectedDate, currentUser, reason)
-        if (result.batchesCreated === 0 && result.tasksAssigned === 0) {
-          setStatusMessage('No unassigned tasks found for this date.')
-        } else {
-          setStatusMessage(
-            `Created ${result.batchesCreated} batch${result.batchesCreated !== 1 ? 'es' : ''}, assigned ${result.tasksAssigned} task${result.tasksAssigned !== 1 ? 's' : ''}.`,
-          )
-        }
-      }
-      setPendingAction(null)
-    } catch (dispatchError) {
-      if (dispatchError instanceof DispatchError) {
-        if (dispatchError.code === 'DISPATCH_CAPACITY_EXCEEDED') {
-          setError(`Conflict: capacity exceeded by ${dispatchError.meta?.overBy ?? '?'} lbs.`)
-        } else if (dispatchError.code === 'DISPATCH_TIME_CONFLICT') {
-          setError('Conflict: task window does not fit batch shift.')
-        } else {
-          setError(dispatchError.message)
-        }
-      } else {
-        setError(dispatchError instanceof Error ? dispatchError.message : 'Dispatch update failed.')
-      }
-      setPendingAction(null)
-    }
+    await executePendingAction(action, reason)
   }
 
   function autoPlan() {

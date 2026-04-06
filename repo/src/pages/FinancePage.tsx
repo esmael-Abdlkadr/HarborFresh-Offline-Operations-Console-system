@@ -1,6 +1,5 @@
 import { useMemo, useState, type ChangeEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { LedgerEntryForm } from '../components/finance/LedgerEntryForm.tsx'
 import { Modal } from '../components/ui/Modal.tsx'
@@ -8,9 +7,15 @@ import { financeService, FinanceError } from '../services/financeService.ts'
 
 export default function FinancePage() {
   const { currentUser, encryptionKey, hasRole, logout } = useAuth()
-  const entriesRaw = useLiveQuery(() => db.ledgerEntries.orderBy('createdAt').reverse().toArray(), [])
+  const entriesRaw = useLiveQuery(
+    () => (currentUser ? financeService.listLedgerEntries(currentUser) : undefined),
+    [currentUser?.role],
+  )
   const entries = entriesRaw ?? []
-  const attachmentsRaw = useLiveQuery(() => db.attachments.toArray(), [])
+  const attachmentsRaw = useLiveQuery(
+    () => (currentUser ? financeService.listAttachments(currentUser) : undefined),
+    [currentUser?.role],
+  )
 
   const [tab, setTab] = useState<'ledger' | 'ocr' | 'export'>('ledger')
   const [error, setError] = useState<string | null>(null)

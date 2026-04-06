@@ -1,9 +1,15 @@
 import { db } from '../db/db.ts'
-import type { DeliveryBatch, DeliveryTask, User } from '../types/index.ts'
+import type { DeliveryBatch, DeliveryTask, DispatchLog, User } from '../types/index.ts'
 
 export interface ConflictResult {
   type: 'CAPACITY_EXCEEDED' | 'TIME_WINDOW_VIOLATION' | 'PICKUP_WINDOW_VIOLATION' | 'DUPLICATE_ADDRESS'
   message: string
+}
+
+export interface DispatchActorView {
+  id: number
+  username: string
+  role: User['role']
 }
 
 export class DispatchError extends Error {
@@ -83,6 +89,29 @@ function assertDispatchRole(actor: User) {
 }
 
 export const dispatchService = {
+  async listBatchesForDate(date: string, actor: { role: User['role'] }): Promise<DeliveryBatch[]> {
+    assertDispatchRole(actor as User)
+    return db.deliveryBatches.where('date').equals(date).toArray()
+  },
+
+  async listTasks(actor: { role: User['role'] }): Promise<DeliveryTask[]> {
+    assertDispatchRole(actor as User)
+    return db.deliveryTasks.toArray()
+  },
+
+  async listDispatchActors(actor: { role: User['role'] }): Promise<DispatchActorView[]> {
+    assertDispatchRole(actor as User)
+    const users = await db.users
+      .filter((u) => (u.role === 'Dispatcher' || u.role === 'Administrator') && u.id !== undefined)
+      .toArray()
+    return users.map((u) => ({ id: u.id as number, username: u.username, role: u.role }))
+  },
+
+  async listRecentLogs(limit: number, actor: { role: User['role'] }): Promise<DispatchLog[]> {
+    assertDispatchRole(actor as User)
+    return db.dispatchLogs.orderBy('timestamp').reverse().limit(limit).toArray()
+  },
+
   async generateTasksFromOrders(actor: User): Promise<number> {
     assertDispatchRole(actor)
     const confirmedOrders = await db.orders.where('status').equals('Confirmed').toArray()

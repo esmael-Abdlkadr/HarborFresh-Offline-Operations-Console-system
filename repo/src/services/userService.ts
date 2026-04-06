@@ -2,6 +2,14 @@ import { db } from '../db/db.ts'
 import type { User, UserRole } from '../types/index.ts'
 import { hashPassword } from './cryptoService.ts'
 
+export interface UserAdminView {
+  id: number
+  username: string
+  role: UserRole
+  failedAttempts: number
+  lockedUntil?: number
+}
+
 export class UserServiceError extends Error {
   code: 'USER_EXISTS' | 'PASSWORD_TOO_SHORT' | 'USER_NOT_FOUND' | 'USERNAME_REQUIRED' | 'RBAC_DENIED'
   constructor(code: UserServiceError['code'], message: string) {
@@ -21,6 +29,22 @@ async function writeAuditLog(actor: string, action: string, entityId: string) {
 }
 
 export const userService = {
+  async listUsers(actor: User): Promise<UserAdminView[]> {
+    if (actor.role !== 'Administrator') {
+      throw new UserServiceError('RBAC_DENIED', 'Only Administrators can list users.')
+    }
+    const users = await db.users.orderBy('username').toArray()
+    return users
+      .filter((u) => u.id !== undefined)
+      .map((u) => ({
+        id: u.id as number,
+        username: u.username,
+        role: u.role,
+        failedAttempts: u.failedAttempts,
+        lockedUntil: u.lockedUntil,
+      }))
+  },
+
   async createUser(username: string, password: string, role: UserRole, actor: User): Promise<User> {
     if (actor.role !== 'Administrator') {
       throw new UserServiceError('RBAC_DENIED', 'Only Administrators can create users.')
@@ -69,6 +93,13 @@ export const userService = {
     if (!user) throw new UserServiceError('USER_NOT_FOUND', 'User not found.')
     await db.users.update(userId, { failedAttempts: 0, lockedUntil: undefined })
     await writeAuditLog(actor.username, 'ACCOUNT_UNLOCKED', String(userId))
+  },
+
+  async getInstructorList(): Promise<Array<{ id: number; username: string }>> {
+    const users = await db.users.where('role').anyOf(['Instructor', 'Administrator']).toArray()
+    return users
+      .filter((u) => u.id !== undefined)
+      .map((u) => ({ id: u.id!, username: u.username }))
   },
 
   async getUsernames(userIds: number[]): Promise<Map<number, string>> {

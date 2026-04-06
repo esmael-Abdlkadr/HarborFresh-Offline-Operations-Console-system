@@ -125,7 +125,7 @@ describe('financeService', () => {
     expect(stored?.invoiceNotes).not.toBe('secret invoice')
     expect(stored?.accountIdentifier).not.toBe('ACC-100')
 
-    const decrypted = await financeService.getDecryptedEntry(created.id!, key)
+    const decrypted = await financeService.getDecryptedEntry(created.id!, key, clerk)
     expect(decrypted?.invoiceNotes).toBe('secret invoice')
     expect(decrypted?.accountIdentifier).toBe('ACC-100')
   })

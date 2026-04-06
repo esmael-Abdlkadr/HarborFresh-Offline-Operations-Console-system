@@ -1,9 +1,10 @@
 import { useParams } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { CheckoutDrawer } from '../components/CheckoutDrawer.tsx'
+import { campaignService } from '../services/campaignService.ts'
+import { fishService } from '../services/fishService.ts'
 import { orderService } from '../services/orderService.ts'
 import { userService } from '../services/userService.ts'
 import type { Order } from '../types/index.ts'
@@ -30,13 +31,16 @@ export default function CampaignDetailPage() {
   const campaignId = Number(id)
   const { currentUser, hasRole } = useAuth()
 
-  const campaign = useLiveQuery(() => (Number.isFinite(campaignId) ? db.campaigns.get(campaignId) : undefined), [campaignId])
+  const campaign = useLiveQuery(
+    () => (Number.isFinite(campaignId) && currentUser ? campaignService.getCampaign(campaignId, currentUser) : undefined),
+    [campaignId, currentUser?.role],
+  )
   const fish = useLiveQuery(
     async () => {
-      if (!campaign?.fishEntryId) return undefined
-      return db.fishEntries.get(campaign.fishEntryId)
+      if (!campaign?.fishEntryId || !currentUser) return undefined
+      return fishService.getEntry(campaign.fishEntryId, currentUser)
     },
-    [campaign?.fishEntryId],
+    [campaign?.fishEntryId, currentUser?.role],
   )
 
   // Scoped query: non-admin members fetch only their own orders

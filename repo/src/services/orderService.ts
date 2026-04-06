@@ -248,6 +248,15 @@ export const orderService = {
     }
   },
 
+  async getParticipantCounts(): Promise<Map<number, number>> {
+    const active = await db.orders.where('status').noneOf(['Cancelled']).toArray()
+    const map = new Map<number, number>()
+    for (const o of active) {
+      map.set(o.campaignId, (map.get(o.campaignId) ?? 0) + 1)
+    }
+    return map
+  },
+
   async getCampaignOrders(campaignId: number, actor: { id?: number; role: UserRole }): Promise<Order[]> {
     if (actor.role === 'Administrator') {
       return db.orders.where('campaignId').equals(campaignId).toArray()
