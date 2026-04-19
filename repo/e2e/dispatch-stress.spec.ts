@@ -79,7 +79,27 @@ async function createBatch(
   await expect(page.getByText(new RegExp(opts.label, 'i'))).toBeVisible({ timeout: 10000 })
 }
 
+async function ensureGeneratedUnassignedTask(page: import('@playwright/test').Page) {
+  const unassignedColumn = page.getByTestId('drop-column-unassigned')
+  const firstTask = unassignedColumn.locator('article').first()
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.getByRole('button', { name: 'Generate from Orders' }).click()
+    try {
+      await expect(firstTask).toBeVisible({ timeout: 10000 })
+      return
+    } catch {
+      await page.waitForTimeout(300)
+    }
+  }
+
+  const uiError = await page.locator('.error').first().textContent()
+  throw new Error(`No unassigned task appeared after generation attempts. UI error: ${uiError ?? 'none'}`)
+}
+
 test('dispatch stress: DnD assign/unassign/reassign with conflict and recalculate', async ({ page }) => {
+  let dispatchDate = ''
+
   // ── Setup: admin creates fish + campaign, member joins, admin confirms ──
   await loginAs(page, 'admin', 'HarborAdmin#1!')
 
@@ -122,6 +142,24 @@ test('dispatch stress: DnD assign/unassign/reassign with conflict and recalculat
   await card.first().scrollIntoViewIfNeeded()
   await card.first().getByRole('link', { name: 'View Details' }).first().click({ force: true })
   await page.getByRole('button', { name: 'Join Campaign' }).click()
+
+  // Force deterministic pickup/delivery windows and capture the dispatch date
+  // to avoid day-boundary flakiness around midnight.
+  const nowMs = Date.now()
+  const pickupStart = new Date(nowMs + 30 * 60 * 1000)
+  const pickupEnd = new Date(nowMs + 60 * 60 * 1000)
+  const deliveryStart = new Date(nowMs + 120 * 60 * 1000)
+  const deliveryEnd = new Date(nowMs + 180 * 60 * 1000)
+  dispatchDate = toLocalDateTimeValue(deliveryStart).slice(0, 10)
+
+  const pickupWindow = page.locator('fieldset').filter({ hasText: 'Pickup Window' })
+  await pickupWindow.locator('input[type="datetime-local"]').nth(0).fill(toLocalDateTimeValue(pickupStart))
+  await pickupWindow.locator('input[type="datetime-local"]').nth(1).fill(toLocalDateTimeValue(pickupEnd))
+
+  const deliveryWindow = page.locator('fieldset').filter({ hasText: 'Delivery Window' })
+  await deliveryWindow.locator('input[type="datetime-local"]').nth(0).fill(toLocalDateTimeValue(deliveryStart))
+  await deliveryWindow.locator('input[type="datetime-local"]').nth(1).fill(toLocalDateTimeValue(deliveryEnd))
+
   await page.getByLabel('Quantity').fill('2')
   await page.getByRole('button', { name: 'Confirm Join' }).click()
   await expect(page.getByText(/join request completed/i)).toBeVisible()
@@ -135,20 +173,22 @@ test('dispatch stress: DnD assign/unassign/reassign with conflict and recalculat
   await adminCard.first().scrollIntoViewIfNeeded()
   await adminCard.first().getByRole('link', { name: 'View Details' }).first().click({ force: true })
   await page.getByRole('button', { name: 'Orders' }).click()
-  await page.getByRole('button', { name: 'Confirm' }).click()
+  const orderRow = page.locator('table tbody tr').first()
+  await expect(orderRow).toBeVisible({ timeout: 10000 })
+  await orderRow.getByRole('button', { name: 'Confirm' }).click()
   await expect(page.getByRole('dialog', { name: 'Confirm payment' })).toBeVisible()
   await page.getByRole('button', { name: 'Confirm Payment' }).click()
-  await expect(page.getByText('Confirmed')).toBeVisible()
+  await expect(orderRow).toContainText('Confirmed')
   await page.getByRole('button', { name: 'Logout' }).click()
 
   // ── Dispatcher: generate tasks and run true DnD stress cycles ──
   await loginAs(page, 'dispatcher', 'HarborDisp#1!')
   await page.getByRole('link', { name: 'Dispatch Board' }).click()
+  await page.locator('input[type="date"]').fill(dispatchDate)
 
   // Generate tasks from confirmed orders
-  await page.getByRole('button', { name: 'Generate from Orders' }).click()
   const unassignedColumn = page.getByTestId('drop-column-unassigned')
-  await expect(unassignedColumn.locator('article').first()).toBeVisible({ timeout: 10000 })
+  await ensureGeneratedUnassignedTask(page)
 
   // Create a low-capacity batch to force a conflict during drag assignment.
   await createBatch(page, {

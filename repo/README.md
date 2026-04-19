@@ -1,5 +1,7 @@
 # HarborFresh Offline Operations Console
 
+Project type: web
+
 HarborFresh is a fully offline single-page operations console for a seafood co-op. The app runs entirely in the browser with no backend or network API calls, persists operational data in IndexedDB via Dexie, and uses local-only auth and crypto primitives for secure data handling.
 
 ## Tech Stack
@@ -16,19 +18,10 @@ HarborFresh is a fully offline single-page operations console for a seafood co-o
 | Testing Library | 16.x | React component tests |
 | Playwright | 1.59.x | E2E smoke tests |
 
-## Start the App (Local)
-
-```bash
-npm install
-npm run dev
-```
-
-Open **http://localhost:5173** (or the port Vite reports).
-
 ## Start the App (Docker)
 
 ```bash
-docker compose up --build
+docker-compose up --build
 ```
 
 Open **http://localhost:8120**.
@@ -60,19 +53,45 @@ Use this path for CI or when you need a reproducible, isolated test environment 
 | 2 | App starts for E2E | `nginx:1.27-alpine` |
 | 3 | Playwright chromium E2E | `mcr.microsoft.com/playwright:v1.59.0-noble` |
 
-## Run Tests Locally — day-to-day development
+## Verification Method
+
+Use this flow to verify the app is operational after startup:
+
+1. Open `http://localhost:8120`.
+2. Confirm redirect to `/login`.
+3. On first run, sign in as `admin` using the one-time bootstrap password shown on the login page.
+4. Set a new permanent admin password when prompted.
+5. Confirm redirect to Dashboard and visible module navigation.
+6. Open at least one module page (for example, `/fish` and `/campaigns`) and confirm data entry UI is interactive.
+
+For reproducible automated verification, run:
 
 ```bash
-npm run build              # production build
-npm run test               # Vitest unit + service tests
-npm run lint               # ESLint
-npx playwright install     # one-time: install Playwright browser binaries
-npm run e2e                # Playwright E2E (starts dev server with test seed)
+bash run_tests.sh
 ```
 
-E2E tests start the dev server with `VITE_TEST_SEED=true`, which seeds known test accounts so all interaction flows can run without manual setup.
+This executes the Dockerized unit/lint/build stage plus Dockerized Playwright E2E.
 
-> **Note:** `npx playwright install` only needs to be run once per machine (or after upgrading Playwright). If you skip it, `npm run e2e` will fail with a message asking you to run it.
+## Demo Credentials (Role Matrix)
+
+Authentication is required.
+
+### Production bootstrap mode (default app startup)
+
+- Username: `admin`
+- Password: one-time bootstrap password shown in UI on first run, then replaced by your permanent password
+
+### Test-seed mode (used by test automation with `VITE_TEST_SEED=true`)
+
+| Role | Username | Password |
+|---|---|---|
+| Administrator | `admin` | `HarborAdmin#1!` |
+| ContentEditor | `editor` | `HarborEdit#1!` |
+| ContentReviewer | `reviewer` | `HarborReview#1!` |
+| Member | `member` | `HarborMember1!` |
+| Dispatcher | `dispatcher` | `HarborDisp#1!` |
+| FinanceClerk | `finance` | `HarborFin#1!!` |
+| Instructor | `instructor` | `HarborTeach#1!` |
 
 ## Export / Import
 
